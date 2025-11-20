@@ -1,0 +1,45 @@
+{
+  "name": "jslike",
+  "version": "1.1.0",
+  "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
+  "main": "src/index.js",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./validator": "./src/validator/index.js",
+    "./editor/monaco": "./src/editor/monaco/index.js",
+    "./src/editor/wang-prism": "./src/editor/wang-prism.js"
+  },
+  "bin": {
+    "jslike": "./bin/jslike.js"
+  },
+  "scripts": {
+    "build": "node scripts/bundle-acorn.js",
+    "start": "node bin/jslike.js",
+    "repl": "node bin/repl.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:basic": "node tests/basic.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "javascript",
+    "interpreter",
+    "parser",
+    "acorn",
+    "es6"
+  ],
+  "author": "Parth Mudgal <artpar@gmail.com>",
+  "license": "MIT",
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "!src/grammar"
+  ],
+  "devDependencies": {
+    "acorn": "^8.15.0",
+    "vitest": "^4.0.10"
+  }
+}

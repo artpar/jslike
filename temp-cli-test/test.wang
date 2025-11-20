@@ -1,0 +1,3 @@
+console.log("Hello World")
+let x = 42
+console.log("Result:", x * 2)

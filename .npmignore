@@ -1,0 +1,25 @@
+# Source grammar files
+src/grammar/jslike.ne
+src/grammar/lexer.js
+
+# Development files
+scripts/
+examples/
+tests/
+.git/
+.github/
+node_modules/
+
+# Documentation (keep only essential)
+PROJECT_SUMMARY.md
+
+# Development config
+.eslintrc*
+.prettierrc*
+tsconfig*.json
+vitest.config.*
+
+# Temp files
+*.log
+*.tmp
+.DS_Store
