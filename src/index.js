@@ -1,7 +1,7 @@
 // Use bundled Acorn parser for zero runtime dependencies
 import { parse as acornParse } from './parser.js';
 import { Interpreter } from './interpreter/interpreter.js';
-import { Environment } from './runtime/environment.js';
+import { Environment, ReturnValue } from './runtime/environment.js';
 import { createGlobalEnvironment } from './runtime/builtins.js';
 
 // Helper to detect if code contains module syntax or top-level await
@@ -231,7 +231,8 @@ export function parse(code, options = {}) {
     return acornParse(processedCode, {
       ecmaVersion: 2022,  // Support ES2022 features (including top-level await)
       sourceType: sourceType,
-      locations: false     // Don't track source locations (faster)
+      locations: true,     // Track source locations for better error messages
+      allowReturnOutsideFunction: true  // Allow top-level return statements
     });
   } catch (error) {
     // Reformat error message for consistency
@@ -318,10 +319,10 @@ export async function execute(code, env = null, options = {}) {
 
   if (needsAsync) {
     const result = await interpreter.evaluateAsync(ast, userEnv);
-    return result;
+    return result instanceof ReturnValue ? result.value : result;
   } else {
     const result = interpreter.evaluate(ast, userEnv);
-    return result;
+    return result instanceof ReturnValue ? result.value : result;
   }
 }
 

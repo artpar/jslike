@@ -75,6 +75,10 @@ export class Interpreter {
       let result = undefined;
       for (const statement of node.body) {
         result = await this.evaluateAsync(statement, env);
+        // Handle top-level return and throw
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
       }
       return result;
     }
