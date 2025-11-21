@@ -16,7 +16,7 @@ describe('Wang Language Regex Literals', () => {
   describe('Basic Regex Literals', () => {
     test('should parse and create basic regex literal', async () => {
       const result = await ctx.execute(`
-        let pattern = /hello/
+        let pattern = /hello/;
         [pattern instanceof RegExp, pattern.source, pattern.flags]
       `);
       expect(result).toEqual([true, 'hello', '']);
@@ -24,7 +24,7 @@ describe('Wang Language Regex Literals', () => {
 
     test('should create regex with flags', async () => {
       const result = await ctx.execute(`
-        let pattern = /hello/gi
+        let pattern = /hello/gi;
         [pattern instanceof RegExp, pattern.source, pattern.flags, pattern.global, pattern.ignoreCase]
       `);
       expect(result).toEqual([true, 'hello', 'gi', true, true]);
@@ -32,7 +32,7 @@ describe('Wang Language Regex Literals', () => {
 
     test('should support all regex flags', async () => {
       const result = await ctx.execute(`
-        let pattern = /test/gimuy
+        let pattern = /test/gimuy;
         [pattern instanceof RegExp, pattern.flags]
       `);
       expect(result).toEqual([true, 'gimuy']);
@@ -40,7 +40,7 @@ describe('Wang Language Regex Literals', () => {
 
     test('should support regex with special characters', async () => {
       const result = await ctx.execute(`
-        let pattern = /\\d+\\.\\d+/g
+        let pattern = /\\d+\\.\\d+/g;
         [pattern instanceof RegExp, pattern.source, pattern.global]
       `);
       expect(result).toEqual([true, '\\d+\\.\\d+', true]);
@@ -139,7 +139,7 @@ describe('Wang Language Regex Literals', () => {
 
     test('should parse regex after assignment operator', async () => {
       const result = await ctx.execute(`
-        let pattern = /test/
+        let pattern = /test/;
         [pattern instanceof RegExp, pattern.source]
       `);
       expect(result).toEqual([true, 'test']);
@@ -175,7 +175,7 @@ describe('Wang Language Regex Literals', () => {
   describe('Edge Cases', () => {
     test('should handle empty regex', async () => {
       const result = await ctx.execute(`
-        let pattern = /(?:)/
+        let pattern = /(?:)/;
         [pattern instanceof RegExp, pattern.source]
       `);
       expect(result).toEqual([true, '(?:)']);

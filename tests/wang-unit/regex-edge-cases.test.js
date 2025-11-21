@@ -85,7 +85,7 @@ describe('Wang Regex Edge Cases and Parser Conflicts', () => {
   describe('Regex Context Recognition', () => {
     test('should parse regex after assignment operators', async () => {
       const result = await ctx.execute(`
-        let pattern = /test/
+        let pattern = /test/;
         [pattern instanceof RegExp, pattern.source]
       `);
       expect(result).toEqual([true, 'test']);
@@ -94,7 +94,7 @@ describe('Wang Regex Edge Cases and Parser Conflicts', () => {
     test('should parse regex after compound assignment', async () => {
       const result = await ctx.execute(`
         let pattern = /initial/
-        pattern = /updated/g
+        pattern = /updated/g;
         [pattern.source, pattern.global]
       `);
       expect(result).toEqual(['updated', true]);
@@ -226,7 +226,7 @@ describe('Wang Regex Edge Cases and Parser Conflicts', () => {
     test('should handle division followed by regex on next line', async () => {
       const result = await ctx.execute(`
         let math = 15 / 3
-        let pattern = /nextline/
+        let pattern = /nextline/;
         [math, pattern.source]
       `);
       expect(result).toEqual([5, 'nextline']);
@@ -318,7 +318,7 @@ describe('Wang Regex Edge Cases and Parser Conflicts', () => {
     test('should handle regex with escaped slashes in division context', async () => {
       const result = await ctx.execute(`
         let path = /path\\/to\\/file/
-        let math = 12 / 3
+        let math = 12 / 3;
         [path.source, math]
       `);
       expect(result).toEqual(['path\\/to\\/file', 4]);

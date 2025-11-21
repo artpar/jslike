@@ -192,11 +192,11 @@ describe('Edge Cases: Error Handling and Propagation', () => {
                 try {
                     throw new CustomError('Custom message', 'ERR_001')
                 } catch (e) {
-                    {
+                    ({
                         name: e.name,
                         message: e.message,
                         code: e.code
-                    }
+                    })
                 }
             `;
       const result = await interpreter.execute(code);
@@ -511,12 +511,12 @@ describe('Edge Cases: Error Handling and Propagation', () => {
                         // This runs but doesn't affect return
                     }
                 }
-                
-                {
+                ;
+                ({
                     negative: test(-1),
                     zero: test(0),
                     positive: test(1)
-                }
+                })
             `;
       const result = await interpreter.execute(code);
       expect(result).toEqual({

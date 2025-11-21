@@ -41,16 +41,16 @@ describe('Wang Regex Stress Tests and Performance', () => {
         let largeText = repeat(baseText, 100)  // ~15KB of text
         
         // Count different patterns
-        let emails = match(largeText, /[^@\\s]+@[^@\\s]+\\.[^@\\s]+/g)
-        let phones = match(largeText, /\\(\\d{3}\\)\\s\\d{3}-\\d{4}/g)  
-        let urls = match(largeText, /https?:\\/\\/[^\\s]+/g)
-        
-        {
+        let emails = match(largeText, /[^@\\s]+@[^@\\s]+\\.[^@\\s]+/g);
+        let phones = match(largeText, /\\(\\d{3}\\)\\s\\d{3}-\\d{4}/g);
+        let urls = match(largeText, /https?:\\/\\/[^\\s]+/g);
+
+        ({
           emailCount: emails ? length(emails) : 0,
-          phoneCount: phones ? length(phones) : 0, 
+          phoneCount: phones ? length(phones) : 0,
           urlCount: urls ? length(urls) : 0,
           textSize: length(largeText)
-        }
+        });
       `);
       
       expect(result.emailCount).toBe(100);
@@ -144,11 +144,11 @@ describe('Wang Regex Stress Tests and Performance', () => {
         
         for (let item of testData) {
           if (test(item, /@/)) emails = emails + 1
-          if (test(item, /\\d{10}/)) phones = phones + 1  
+          if (test(item, /\\d{10}/)) phones = phones + 1
           if (test(item, /https?:/)) urls = urls + 1
         }
-        
-        { emails, phones, urls, total: length(testData) }
+
+        ({emails, phones, urls, total: length(testData)});
       `);
       
       expect(result.total).toBe(1000);
@@ -174,22 +174,22 @@ describe('Wang Regex Stress Tests and Performance', () => {
         
         for (let text of testTexts) {
           let emailMatches = match(text, emailPattern) || []
-          let phoneMatches = match(text, phonePattern) || []  
+          let phoneMatches = match(text, phonePattern) || []
           let numberMatches = match(text, numberPattern) || []
-          
+
           push(results, {
             emails: length(emailMatches),
             phones: length(phoneMatches),
             numbers: length(numberMatches)
           })
         }
-        
-        {
+
+        ({
           processed: length(results),
           totalEmails: results.reduce((sum, r) => sum + r.emails, 0),
-          totalPhones: results.reduce((sum, r) => sum + r.phones, 0), 
+          totalPhones: results.reduce((sum, r) => sum + r.phones, 0),
           totalNumbers: results.reduce((sum, r) => sum + r.numbers, 0)
-        }
+        });
       `);
       
       expect(result.processed).toBe(100);
@@ -205,20 +205,20 @@ describe('Wang Regex Stress Tests and Performance', () => {
         let complexText = "user: john.doe@company.com (Department: Engineering, Level: Senior, ID: ENG001)"
         let pattern = /user:\\s+([^@]+)@([^\\s]+)\\s+\\(Department:\\s+([^,]+),\\s+Level:\\s+([^,]+),\\s+ID:\\s+([^)]+)\\)/
         
-        let match = match(complexText, pattern)
-        
+        let match = match(complexText, pattern);
+
         if (match) {
-          {
+          ({
             fullMatch: match[0],
-            username: match[1], 
+            username: match[1],
             domain: match[2],
             department: match[3],
             level: match[4],
             id: match[5],
             captureCount: length(match) - 1
-          }
+          });
         } else {
-          null
+          null;
         }
       `);
       
@@ -247,15 +247,15 @@ describe('Wang Regex Stress Tests and Performance', () => {
         }
         
         // Extract content at different levels
-        let level1 = match(text, /\\(([^()]+)\\)/)
-        let allParens = match(text, /\\([^()]*\\)/g) || []
-        
-        {
+        let level1 = match(text, /\\(([^()]+)\\)/);
+        let allParens = match(text, /\\([^()]*\\)/g) || [];
+
+        ({
           maxDepth: maxDepth,
           level1Content: level1 ? level1[1] : null,
           parenGroups: length(allParens),
           textLength: length(text)
-        }
+        });
       `);
       
       expect(result.maxDepth).toBeGreaterThan(2);
@@ -267,18 +267,18 @@ describe('Wang Regex Stress Tests and Performance', () => {
         let internationalText = "Café naïve résumé 中文 日本語 한국어 العربية русский"
         
         // Test various unicode patterns
-        let latinExtended = match(internationalText, /[à-ÿ]/g) || []
-        let cjk = match(internationalText, /[\\u4e00-\\u9fff\\u3040-\\u309f\\u30a0-\\u30ff\\uac00-\\ud7af]/g) || []
-        let arabic = match(internationalText, /[\\u0600-\\u06ff]/g) || []
-        let cyrillic = match(internationalText, /[\\u0400-\\u04ff]/g) || []
-        
-        {
+        let latinExtended = match(internationalText, /[à-ÿ]/g) || [];
+        let cjk = match(internationalText, /[\\u4e00-\\u9fff\\u3040-\\u309f\\u30a0-\\u30ff\\uac00-\\ud7af]/g) || [];
+        let arabic = match(internationalText, /[\\u0600-\\u06ff]/g) || [];
+        let cyrillic = match(internationalText, /[\\u0400-\\u04ff]/g) || [];
+
+        ({
           latinExtendedCount: length(latinExtended),
-          cjkCount: length(cjk), 
+          cjkCount: length(cjk),
           arabicCount: length(arabic),
           cyrillicCount: length(cyrillic),
           totalUnicodeChars: length(latinExtended) + length(cjk) + length(arabic) + length(cyrillic)
-        }
+        });
       `);
       
       expect(result.latinExtendedCount).toBeGreaterThan(0);
@@ -297,20 +297,20 @@ describe('Wang Regex Stress Tests and Performance', () => {
         
         for (let i = 0; i < iterations; i = i + 1) {
           // Create new patterns each iteration
-          let pattern = new RegExp("test" + (i % 10), "g")
-          push(patterns, pattern)
-          
+          let pattern = new RegExp("test" + (i % 10), "g");
+          push(patterns, pattern);
+
           // Test immediately
-          let testText = "test0 test1 test2 test3 test4 test5 test6 test7 test8 test9"
-          let matches = match(testText, pattern)
-          push(testResults, matches ? length(matches) : 0)
+          let testText = "test0 test1 test2 test3 test4 test5 test6 test7 test8 test9";
+          let matches = match(testText, pattern);
+          push(testResults, matches ? length(matches) : 0);
         }
-        
-        {
+
+        ({
           patternsCreated: length(patterns),
           totalMatches: testResults.reduce((sum, count) => sum + count, 0),
           averageMatches: testResults.reduce((sum, count) => sum + count, 0) / length(testResults)
-        }
+        });
       `);
       
       expect(result.patternsCreated).toBe(500);
@@ -328,27 +328,27 @@ describe('Wang Regex Stress Tests and Performance', () => {
         
         // Perform multiple operations
         for (let i = 0; i < 20; i = i + 1) {
-          let words = match(longText, /\\b\\w{4,}\\b/g) || []
-          let sentences = split(longText, /[.!?]+/)
-          let replacedText = replace(longText, /the/gi, "THE")
-          
+          let words = match(longText, /\\b\\w{4,}\\b/g) || [];
+          let sentences = split(longText, /[.!?]+/);
+          let replacedText = replace(longText, /the/gi, "THE");
+
           push(operations, {
             iteration: i,
             wordCount: length(words),
             sentenceCount: length(sentences),
             replacements: length(match(replacedText, /THE/g) || [])
-          })
+          });
         }
-        
-        let endTime = Date.now()
-        let totalTime = endTime - startTime
-        
-        {
+
+        let endTime = Date.now();
+        let totalTime = endTime - startTime;
+
+        ({
           operationsCompleted: length(operations),
           totalTimeMs: totalTime,
           avgWordsPerOp: operations.reduce((sum, op) => sum + op.wordCount, 0) / length(operations),
           avgTimePerOp: totalTime / length(operations)
-        }
+        });
       `);
       
       expect(result.operationsCompleted).toBe(20);
@@ -368,34 +368,34 @@ describe('Wang Regex Stress Tests and Performance', () => {
           { pattern: /.{0,}/, text: "any text here" }, // Zero or more anything
           { pattern: /(?:)/, text: "test" }, // Empty group
           { pattern: /a*/, text: "bbbb" } // No matches
-        ]
+        ];
         
-        let results = []
-        
+        let results = [];
+
         for (let testCase of edgeCases) {
           try {
-            let matches = match(testCase.text, testCase.pattern)
-            let testResult = test(testCase.text, testCase.pattern)
-            
+            let matches = match(testCase.text, testCase.pattern);
+            let testResult = test(testCase.text, testCase.pattern);
+
             push(results, {
               patternSource: testCase.pattern.source,
               hasMatches: matches !== null,
               testResult: testResult,
               matchCount: matches ? length(matches) : 0
-            })
+            });
           } catch (error) {
             push(results, {
               patternSource: testCase.pattern.source,
               error: "Failed to execute"
-            })
+            });
           }
         }
-        
-        {
+
+        ({
           casesProcessed: length(results),
           successfulCases: results.filter(r => !r.error).length,
           errorCases: results.filter(r => r.error).length
-        }
+        });
       `);
       
       expect(result.casesProcessed).toBe(8);
@@ -422,13 +422,13 @@ describe('Wang Regex Stress Tests and Performance', () => {
           push(logEntries, timestamp + " [" + level + "] " + service + ": " + message)
         }
         
-        let logText = join(logEntries, "\\n")
+        let logText = join(logEntries, "\\n");
 
         // Extract structured data
-        let errorLogs = match(logText, /\\[ERROR\\][^\\n]+/g) || []
-        let timings = match(logText, /(\\d+)ms/g) || []
-        let timestamps = match(logText, /\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z/g) || []
-        let serviceMatches = match(logText, /\\] (\\w+):/g) || []
+        let errorLogs = match(logText, /\\[ERROR\\][^\\n]+/g) || [];
+        let timings = match(logText, /(\\d+)ms/g) || [];
+        let timestamps = match(logText, /\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z/g) || [];
+        let serviceMatches = match(logText, /\\] (\\w+):/g) || [];
 
         ({
           totalLogLines: length(logEntries),
@@ -437,7 +437,7 @@ describe('Wang Regex Stress Tests and Performance', () => {
           timestampCount: length(timestamps),
           serviceCount: length(serviceMatches),
           logSizeChars: length(logText)
-        })
+        });
       `);
       
       expect(result.totalLogLines).toBe(500);
@@ -480,19 +480,19 @@ describe('Wang Regex Stress Tests and Performance', () => {
             validEmail: test(customer.email, emailPattern),
             validPhone: test(customer.phone, phonePattern),
             validZip: test(customer.zip, zipPattern)
-          }
-          
-          result.isValid = result.validEmail && result.validPhone && result.validZip
-          push(validationResults, result)
+          };
+
+          result.isValid = result.validEmail && result.validPhone && result.validZip;
+          push(validationResults, result);
         }
-        
-        {
+
+        ({
           totalCustomers: length(customers),
           validCustomers: validationResults.filter(r => r.isValid).length,
           validEmails: validationResults.filter(r => r.validEmail).length,
           validPhones: validationResults.filter(r => r.validPhone).length,
           validZips: validationResults.filter(r => r.validZip).length
-        }
+        });
       `);
       
       expect(result.totalCustomers).toBe(300);

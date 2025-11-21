@@ -36,13 +36,13 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
       const result = await ctx.execute(`
         let pattern = /test/g
         let text = "test test test"
-        let matches = match(text, pattern)
-        
-        {
+        let matches = match(text, pattern);
+
+        ({
           isGlobal: pattern.global,
           matchCount: matches ? length(matches) : 0,
           flags: pattern.flags
-        }
+        })
       `);
       
       expect(result.isGlobal).toBe(true);
@@ -54,13 +54,13 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
       const result = await ctx.execute(`
         let pattern = /TEST/i
         let text = "test TEST Test"
-        let matches = match(text, pattern)
-        
-        {
+        let matches = match(text, pattern);
+
+        ({
           isIgnoreCase: pattern.ignoreCase,
           hasMatch: matches !== null,
           flags: pattern.flags
-        }
+        })
       `);
       
       expect(result.isIgnoreCase).toBe(true);
@@ -72,14 +72,14 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
       const result = await ctx.execute(`
         let pattern = /^test/m
         let text = "line1\\ntest\\nline3"
-        let matches = match(text, pattern)
-        
-        {
+        let matches = match(text, pattern);
+
+        ({
           isMultiline: pattern.multiline,
           hasMatch: matches !== null,
           flags: pattern.flags,
           textContent: text
-        }
+        })
       `);
       
       expect(result.isMultiline).toBe(true);
@@ -158,9 +158,9 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
   describe('Regex Property Access', () => {
     test('should access all standard regex properties', async () => {
       const result = await ctx.execute(`
-        let pattern = /hello(\\w+)/gi
-        
-        {
+        let pattern = /hello(\\w+)/gi;
+
+        ({
           source: pattern.source,
           global: pattern.global,
           ignoreCase: pattern.ignoreCase,
@@ -170,7 +170,7 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
           dotAll: pattern.dotAll || false,
           flags: pattern.flags,
           lastIndex: pattern.lastIndex
-        }
+        })
       `);
       
       expect(result.source).toBe('hello(\\w+)');
@@ -184,20 +184,20 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
     test('should handle regex as object properties', async () => {
       const result = await ctx.execute(`
         let pattern = /test/g
-        let properties = []
-        
+        let properties = [];
+
         // Check if pattern has standard object properties
-        let hasToString = typeof pattern.toString === "function"
-        let hasValueOf = typeof pattern.valueOf === "function"
-        let prototypeCheck = typeof pattern === "object"
-        
-        {
+        let hasToString = typeof pattern.toString === "function";
+        let hasValueOf = typeof pattern.valueOf === "function";
+        let prototypeCheck = typeof pattern === "object";
+
+        ({
           hasToString: hasToString,
           hasValueOf: hasValueOf,
           isObject: prototypeCheck,
           stringValue: toString(pattern),
           typeofResult: typeof pattern
-        }
+        })
       `);
       
       expect(result.hasToString).toBe(true);
@@ -239,15 +239,15 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
 
     test('should handle empty strings and patterns', async () => {
       const result = await ctx.execute(`
-        let emptyPattern = /(?:)/  // Valid empty pattern
-        let emptyString = ""
-        
-        {
+        let emptyPattern = /(?:)/;  // Valid empty pattern
+        let emptyString = "";
+
+        ({
           testEmpty: test(emptyString, emptyPattern),
           matchEmpty: match(emptyString, emptyPattern) !== null,
           testNonEmpty: test("text", emptyPattern),
           patternSource: emptyPattern.source
-        }
+        })
       `);
       
       expect(result.testEmpty).toBe(true);
@@ -278,27 +278,27 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         for (let testCase of specialChars) {
           try {
-            let matches = test(testCase.text, testCase.pattern)
+            let matches = test(testCase.text, testCase.pattern);
             push(results, {
               char: testCase.char,
               matches: matches,
               success: true
-            })
+            });
           } catch (e) {
             push(results, {
               char: testCase.char,
               matches: false,
               success: false,
               error: e.message || "error"
-            })
+            });
           }
         }
-        
-        {
+
+        ({
           totalTests: length(results),
           successfulTests: results.filter(r => r.success).length,
           allMatched: results.every(r => r.matches)
-        }
+        })
       `);
       
       expect(result.totalTests).toBe(13);
@@ -316,27 +316,27 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         for (let input of invalidInputs) {
           try {
-            let result = test(input, pattern)
+            let result = test(input, pattern);
             push(errorTests, {
               input: typeof input,
               result: result,
               error: false
-            })
+            });
           } catch (e) {
             push(errorTests, {
               input: typeof input,
               result: null,
               error: true
-            })
+            });
           }
         }
-        
-        {
+
+        ({
           totalTests: length(errorTests),
           errorCount: errorTests.filter(t => t.error).length,
           successCount: errorTests.filter(t => !t.error).length,
           results: errorTests
-        }
+        })
       `);
       
       expect(result.totalTests).toBe(6);
@@ -364,27 +364,27 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         for (let testCase of commonPatterns) {
           try {
-            let matches = test(testCase.text, testCase.pattern)
+            let matches = test(testCase.text, testCase.pattern);
             push(results, {
               name: testCase.name,
               matches: matches,
               flags: testCase.pattern.flags,
               source: testCase.pattern.source.substring(0, 20) + "..."
-            })
+            });
           } catch (e) {
             push(results, {
               name: testCase.name,
               matches: false,
               error: e.message || "error"
-            })
+            });
           }
         }
-        
-        {
+
+        ({
           totalPatterns: length(results),
           successfulMatches: results.filter(r => r.matches).length,
           errors: results.filter(r => r.error).length
-        }
+        })
       `);
       
       expect(result.totalPatterns).toBe(7);
@@ -406,13 +406,13 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         for (let testCase of unicodeTests) {
           try {
-            let matches = test(testCase.text, testCase.pattern)
+            let matches = test(testCase.text, testCase.pattern);
             push(results, {
               name: testCase.name,
               matches: matches,
               unicode: testCase.pattern.unicode,
               success: true
-            })
+            });
           } catch (e) {
             // Some Unicode features may not be supported in all environments
             push(results, {
@@ -420,15 +420,15 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
               matches: false,
               success: false,
               error: "Unicode feature not supported"
-            })
+            });
           }
         }
-        
-        {
+
+        ({
           totalTests: length(results),
           supportedFeatures: results.filter(r => r.success).length,
           unsupportedFeatures: results.filter(r => !r.success).length
-        }
+        })
       `);
       
       expect(result.totalTests).toBe(5);
@@ -443,30 +443,30 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         try {
           // Test positive lookbehind
-          let pattern = /(?<=\\$)\\d+/
-          let text = "Price: $100"
-          let matches = test(text, pattern)
-          lookbehindSupported = true
-          push(lookbehindResults, { type: "positive", supported: true, matches: matches })
+          let pattern = /(?<=\\$)\\d+/;
+          let text = "Price: $100";
+          let matches = test(text, pattern);
+          lookbehindSupported = true;
+          push(lookbehindResults, { type: "positive", supported: true, matches: matches });
         } catch (e) {
-          push(lookbehindResults, { type: "positive", supported: false, error: "Not supported" })
+          push(lookbehindResults, { type: "positive", supported: false, error: "Not supported" });
         }
-        
+
         try {
-          // Test negative lookbehind  
-          let pattern = /(?<!\\$)\\d+/
-          let text = "Quantity: 50"
-          let matches = test(text, pattern)
-          push(lookbehindResults, { type: "negative", supported: true, matches: matches })
+          // Test negative lookbehind
+          let pattern = /(?<!\\$)\\d+/;
+          let text = "Quantity: 50";
+          let matches = test(text, pattern);
+          push(lookbehindResults, { type: "negative", supported: true, matches: matches });
         } catch (e) {
-          push(lookbehindResults, { type: "negative", supported: false, error: "Not supported" })
+          push(lookbehindResults, { type: "negative", supported: false, error: "Not supported" });
         }
-        
-        {
+
+        ({
           lookbehindSupported: lookbehindSupported,
           results: lookbehindResults,
           totalTests: length(lookbehindResults)
-        }
+        })
       `);
       
       expect(result.totalTests).toBe(2);
@@ -479,19 +479,19 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
   describe('RegExp Constructor Compatibility', () => {
     test('should handle RegExp constructor from patterns', async () => {
       const result = await ctx.execute(`
-        let literalPattern = /test/gi
-        let constructorPattern = new RegExp(literalPattern.source, literalPattern.flags)
-        
-        let text = "TEST text"
-        
-        {
+        let literalPattern = /test/gi;
+        let constructorPattern = new RegExp(literalPattern.source, literalPattern.flags);
+
+        let text = "TEST text";
+
+        ({
           literalTest: test(text, literalPattern),
           constructorTest: test(text, constructorPattern),
           sameSource: literalPattern.source === constructorPattern.source,
           sameFlags: literalPattern.flags === constructorPattern.flags,
           bothGlobal: literalPattern.global === constructorPattern.global,
           bothIgnoreCase: literalPattern.ignoreCase === constructorPattern.ignoreCase
-        }
+        })
       `);
       
       expect(result.literalTest).toBe(true);
@@ -504,17 +504,17 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
 
     test('should handle string patterns in RegExp constructor', async () => {
       const result = await ctx.execute(`
-        let stringPattern = new RegExp("te.t", "i")
-        let literalPattern = /te.t/i
-        
-        let testText = "TEST"
-        
-        {
+        let stringPattern = new RegExp("te.t", "i");
+        let literalPattern = /te.t/i;
+
+        let testText = "TEST";
+
+        ({
           stringResult: test(testText, stringPattern),
           literalResult: test(testText, literalPattern),
           sameSource: stringPattern.source === literalPattern.source,
           sameFlags: stringPattern.flags === literalPattern.flags
-        }
+        })
       `);
       
       expect(result.stringResult).toBe(true);
@@ -533,22 +533,22 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         // Reuse the same pattern multiple times
         for (let text of testTexts) {
-          let matches = match(text, sharedPattern)
+          let matches = match(text, sharedPattern);
           push(results, {
             text: text,
             hasMatch: matches !== null,
             matchCount: matches ? length(matches) : 0
-          })
-          
+          });
+
           // Reset lastIndex for global patterns
-          sharedPattern.lastIndex = 0
+          sharedPattern.lastIndex = 0;
         }
-        
-        {
+
+        ({
           totalTests: length(results),
           successfulMatches: results.filter(r => r.hasMatch).length,
           patternReused: true
-        }
+        })
       `);
       
       expect(result.totalTests).toBe(5);
@@ -562,17 +562,17 @@ describe('Wang Regex Browser Compatibility and Error Handling', () => {
         
         // Create and use many temporary patterns
         for (let i = 0; i < 50; i = i + 1) {
-          let tempPattern = new RegExp("test" + i, "g")
-          let tempResult = test("test" + i, tempPattern)
-          push(temporaryResults, tempResult)
-          
+          let tempPattern = new RegExp("test" + i, "g");
+          let tempResult = test("test" + i, tempPattern);
+          push(temporaryResults, tempResult);
+
           // Pattern goes out of scope here
         }
-        
-        {
+
+        ({
           totalPatterns: length(temporaryResults),
           allMatched: temporaryResults.every(result => result === true)
-        }
+        })
       `);
       
       expect(result.totalPatterns).toBe(50);

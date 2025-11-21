@@ -185,7 +185,7 @@ describe('Constructor Detection', () => {
           }
         }
         
-        let dog = new Dog("Rex", "Labrador")
+        let dog = new Dog("Rex", "Labrador");
         [dog.name, dog.breed, dog.speak(), dog.getBreed()]
       `);
 
@@ -205,7 +205,7 @@ describe('Constructor Detection', () => {
 
       const result = await interpreter.execute(`
         let AsyncCtor = createAsyncConstructor()
-        let instance = await new AsyncCtor("test")
+        let instance = await new AsyncCtor("test");
         [instance.value, instance.type]
       `);
 
@@ -226,7 +226,7 @@ describe('Constructor Detection', () => {
       interpreter.setVariable('WeirdConstructor', WeirdConstructor);
 
       const result = await interpreter.execute(`
-        let instance = new WeirdConstructor("test")
+        let instance = new WeirdConstructor("test");
         [instance.value, instance.type]
       `);
 
@@ -247,7 +247,7 @@ describe('Constructor Detection', () => {
 
       const result = await interpreter.execute(`
         let ArrowCtor = getArrowFunction()
-        let instance = new ArrowCtor("test")
+        let instance = new ArrowCtor("test");
         [instance.value, instance.type]
       `);
 

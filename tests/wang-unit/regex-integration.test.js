@@ -395,8 +395,8 @@ describe('Wang Regex Integration with Language Features', () => {
     test('should work with array destructuring', async () => {
       const result = await ctx.execute(`
         let regexArray = [/first/, /second/]
-        let [firstPattern, secondPattern] = regexArray
-        
+        let [firstPattern, secondPattern] = regexArray;
+
         [firstPattern.source, secondPattern.source]
       `);
       expect(result).toEqual(['first', 'second']);
@@ -428,8 +428,8 @@ describe('Wang Regex Integration with Language Features', () => {
         import { EMAIL_REGEX, validateEmail } from "validators"
         
         let isValidPattern = typeof EMAIL_REGEX === "object"
-        let isValidFunction = validateEmail("test@example.com")
-        
+        let isValidFunction = validateEmail("test@example.com");
+
         [isValidPattern, isValidFunction]
       `);
       
@@ -452,8 +452,8 @@ describe('Wang Regex Integration with Language Features', () => {
         
         let text = "abc123def456ghi"
         let numbers = extractNumbers(text)
-        let withoutNumbers = removeNumbers(text)
-        
+        let withoutNumbers = removeNumbers(text);
+
         [numbers, withoutNumbers]
       `);
       

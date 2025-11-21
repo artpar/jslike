@@ -3,7 +3,7 @@
 import { readFile } from 'fs/promises';
 import { stdin } from 'process';
 import { parse } from 'acorn';
-import { preprocessCode, isTopLevelAwait } from '../index.js';
+import { isTopLevelAwait } from '../index.js';
 
 const args = process.argv.slice(2);
 
@@ -59,12 +59,11 @@ async function validate() {
       process.exit(1);
     }
 
-    // Preprocess the code
-    const processedCode = preprocessCode(code);
-    const hasAwait = isTopLevelAwait(processedCode);
+    // Check for top-level await
+    const hasAwait = isTopLevelAwait(code);
 
     // Parse the code to validate syntax
-    const ast = parse(processedCode, {
+    const ast = parse(code, {
       ecmaVersion: 'latest',
       sourceType: hasAwait ? 'module' : 'script',
       locations: true

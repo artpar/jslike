@@ -69,15 +69,15 @@ describe('Wang Interpreter Return Values', () => {
 
   it('should return array/object literals as last expression', async () => {
     const arrayResult = await interpreter.execute(`
-      let x = 5
+      let x = 5;
       [x, x * 2, x * 3]
     `);
     expect(arrayResult).toEqual([5, 10, 15]);
 
     const objResult = await interpreter.execute(`
       let name = "Wang"
-      let version = "1.0"
-      { name, version, active: true }
+      let version = "1.0";
+      ({ name, version, active: true })
     `);
     expect(objResult).toEqual({ name: 'Wang', version: '1.0', active: true });
   });
@@ -144,14 +144,14 @@ describe('Wang Interpreter Return Values', () => {
   it('should handle complex nested expressions', async () => {
     const result = await interpreter.execute(`
       let data = { x: 5, y: 10 }
-      let factor = 2
-      
+      let factor = 2;
+
       // The last expression becomes the return value
-      {
+      ({
         result: (data.x + data.y) * factor,
         sum: data.x + data.y,
         product: data.x * data.y
-      }
+      })
     `);
     expect(result).toEqual({
       result: 30,

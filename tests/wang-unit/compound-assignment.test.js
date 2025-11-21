@@ -97,7 +97,7 @@ describe('Compound Assignment Operators E2E', () => {
         let c = 5
         a += b
         b -= c
-        c *= 2
+        c *= 2;
         [a, b, c]
       `);
       expect(result).toEqual([30, 15, 10]);
@@ -292,7 +292,7 @@ describe('Compound Assignment Operators E2E', () => {
         
         let acc = accumulate(10)
         let r1 = acc(5)
-        let r2 = acc(3)
+        let r2 = acc(3);
         [r1, r2]
       `);
       expect(result).toEqual([15, 18]);
@@ -317,7 +317,7 @@ describe('Compound Assignment Operators E2E', () => {
     it('compound assignment should return the new value', async () => {
       const result = await interpreter.execute(`
         let x = 10
-        let y = (x += 5)
+        let y = (x += 5);
         [x, y]
       `);
       expect(result).toEqual([15, 15]);

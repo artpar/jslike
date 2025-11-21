@@ -60,7 +60,7 @@ describe('Wang Interpreter', () => {
         x = x + 1
         let y = x
         x = x + 1
-        let z = x
+        let z = x;
         [x, y, z]
       `);
       expect(result).toEqual([7, 6, 7]);

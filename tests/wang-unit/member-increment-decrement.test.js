@@ -9,8 +9,8 @@ describe('Member Expression Increment/Decrement', () => {
       const result = await ctx.execute(`
         let obj = { count: 5 }
         let before = obj.count++
-        let after = obj.count
-        { before, after }
+        let after = obj.count;
+        ({ before, after })
       `);
       expect(result).toEqual({ before: 5, after: 6 });
     });
@@ -18,8 +18,8 @@ describe('Member Expression Increment/Decrement', () => {
     it('should handle prefix increment on object property', async () => {
       const result = await ctx.execute(`
         let obj = { count: 5 }
-        let value = ++obj.count
-        { value, count: obj.count }
+        let value = ++obj.count;
+        ({ value, count: obj.count })
       `);
       expect(result).toEqual({ value: 6, count: 6 });
     });
@@ -28,8 +28,8 @@ describe('Member Expression Increment/Decrement', () => {
       const result = await ctx.execute(`
         let obj = { value: 10 }
         let before = obj.value--
-        let after = obj.value
-        { before, after }
+        let after = obj.value;
+        ({ before, after })
       `);
       expect(result).toEqual({ before: 10, after: 9 });
     });
@@ -37,8 +37,8 @@ describe('Member Expression Increment/Decrement', () => {
     it('should handle prefix decrement on object property', async () => {
       const result = await ctx.execute(`
         let obj = { value: 10 }
-        let newVal = --obj.value
-        { newVal, value: obj.value }
+        let newVal = --obj.value;
+        ({ newVal, value: obj.value })
       `);
       expect(result).toEqual({ newVal: 9, value: 9 });
     });
@@ -49,8 +49,8 @@ describe('Member Expression Increment/Decrement', () => {
       const result = await ctx.execute(`
         let arr = [1, 2, 3]
         let before = arr[1]++
-        let after = arr[1]
-        { before, after, array: arr }
+        let after = arr[1];
+        ({ before, after, array: arr })
       `);
       expect(result).toEqual({ before: 2, after: 3, array: [1, 3, 3] });
     });
@@ -59,8 +59,8 @@ describe('Member Expression Increment/Decrement', () => {
       const result = await ctx.execute(`
         let arr = [10, 20, 30]
         let index = 2
-        let value = --arr[index]
-        { value, array: arr }
+        let value = --arr[index];
+        ({ value, array: arr })
       `);
       expect(result).toEqual({ value: 29, array: [10, 20, 29] });
     });
@@ -93,11 +93,11 @@ describe('Member Expression Increment/Decrement', () => {
           ]
         }
         data.users[0].score++
-        data.users[1].score--
-        {
+        data.users[1].score--;
+        ({
           alice: data.users[0].score,
           bob: data.users[1].score
-        }
+        })
       `);
       expect(result).toEqual({ alice: 11, bob: 19 });
     });
@@ -128,9 +128,9 @@ describe('Member Expression Increment/Decrement', () => {
         let inc1 = counter.increment()  // returns 10, value becomes 11
         let inc2 = counter.increment()  // returns 11, value becomes 12
         let dec1 = counter.decrement()  // returns 11, value becomes 11
-        let final = counter.getValue()
-        
-        { inc1, inc2, dec1, final }
+        let final = counter.getValue();
+
+        ({ inc1, inc2, dec1, final })
       `);
       expect(result).toEqual({ inc1: 10, inc2: 11, dec1: 11, final: 11 });
     });
@@ -181,8 +181,8 @@ describe('Member Expression Increment/Decrement', () => {
       const result = await ctx.execute(`
         let obj = { a: null, b: undefined }
         obj.a++
-        obj.b++
-        { a: obj.a, b: obj.b }
+        obj.b++;
+        ({ a: obj.a, b: obj.b })
       `);
       expect(result).toEqual({ a: 1, b: 1 });
     });
@@ -210,8 +210,8 @@ describe('Member Expression Increment/Decrement', () => {
     it('should work in complex expressions', async () => {
       const result = await ctx.execute(`
         let obj = { x: 5, y: 10 }
-        let result = (obj.x++ * 2) + (--obj.y * 3)
-        { result, x: obj.x, y: obj.y }
+        let result = (obj.x++ * 2) + (--obj.y * 3);
+        ({ result, x: obj.x, y: obj.y })
       `);
       expect(result).toEqual({ result: 37, x: 6, y: 9 }); // (5 * 2) + (9 * 3) = 37
     });
@@ -252,8 +252,8 @@ describe('Member Expression Increment/Decrement', () => {
     it('should handle multiple increments in single statement', async () => {
       const result = await ctx.execute(`
         let obj = { a: 1, b: 2, c: 3 }
-        let sum = obj.a++ + obj.b++ + obj.c++
-        { sum, obj }
+        let sum = obj.a++ + obj.b++ + obj.c++;
+        ({ sum, obj })
       `);
       expect(result).toEqual({
         sum: 6, // 1 + 2 + 3

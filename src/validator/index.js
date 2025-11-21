@@ -2,7 +2,7 @@
  * WangValidator - Syntax validation for Wang/JSLike code
  */
 
-import { parse, preprocessCode } from '../index.js';
+import { parse } from '../index.js';
 
 export class WangValidator {
   /**
@@ -14,11 +14,8 @@ export class WangValidator {
    */
   validate(code, options = {}) {
     try {
-      // Preprocess code (handles ASI, etc.)
-      const processed = preprocessCode(code);
-
       // Parse the code
-      const ast = parse(processed);
+      const ast = parse(code);
 
       return {
         valid: true,
