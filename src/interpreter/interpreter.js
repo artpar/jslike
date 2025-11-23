@@ -35,9 +35,10 @@ export class Interpreter {
 
     // For block statements, evaluate each statement async
     if (node.type === 'BlockStatement') {
+      const blockEnv = new Environment(env);
       let result = undefined;
       for (const statement of node.body) {
-        result = await this.evaluateAsync(statement, env);
+        result = await this.evaluateAsync(statement, blockEnv);
         if (result instanceof ReturnValue || result instanceof ThrowSignal ||
             result instanceof BreakSignal || result instanceof ContinueSignal) {
           return result;
@@ -254,8 +255,360 @@ export class Interpreter {
       return result;
     }
 
-    // For everything else, delegate to sync evaluate
-    return this.evaluate(node, env);
+    // For ForStatement with async body
+    if (node.type === 'ForStatement') {
+      const forEnv = new Environment(env);
+      if (node.init) {
+        await this.evaluateAsync(node.init, forEnv);
+      }
+      while (!node.test || await this.evaluateAsync(node.test, forEnv)) {
+        const result = await this.evaluateAsync(node.body, forEnv);
+        if (result instanceof BreakSignal) {
+          break;
+        }
+        if (result instanceof ContinueSignal) {
+          if (node.update) {
+            await this.evaluateAsync(node.update, forEnv);
+          }
+          continue;
+        }
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
+        if (node.update) {
+          await this.evaluateAsync(node.update, forEnv);
+        }
+      }
+      return undefined;
+    }
+
+    // For ForOfStatement with async body
+    if (node.type === 'ForOfStatement') {
+      const forEnv = new Environment(env);
+      const iterable = await this.evaluateAsync(node.right, forEnv);
+      const declarator = node.left.declarations[0];
+      const isConst = node.left.kind === 'const';
+
+      for (const value of iterable) {
+        const iterEnv = forEnv.extend();
+        if (declarator.id.type === 'Identifier') {
+          iterEnv.define(declarator.id.name, value, isConst);
+        } else if (declarator.id.type === 'ArrayPattern') {
+          this.bindArrayPattern(declarator.id, value, iterEnv, isConst);
+        } else if (declarator.id.type === 'ObjectPattern') {
+          this.bindObjectPattern(declarator.id, value, iterEnv, isConst);
+        }
+        const result = await this.evaluateAsync(node.body, iterEnv);
+        if (result instanceof BreakSignal) {
+          break;
+        }
+        if (result instanceof ContinueSignal) {
+          continue;
+        }
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
+      }
+      return undefined;
+    }
+
+    // For ForInStatement with async body
+    if (node.type === 'ForInStatement') {
+      const forEnv = new Environment(env);
+      const obj = await this.evaluateAsync(node.right, forEnv);
+      if (obj === null || obj === undefined) {
+        throw new TypeError(`Cannot use 'in' operator to iterate over ${obj}`);
+      }
+      const varName = node.left.declarations[0].id.name;
+      forEnv.define(varName, undefined);
+
+      for (const key in obj) {
+        forEnv.set(varName, key);
+        const result = await this.evaluateAsync(node.body, forEnv);
+        if (result instanceof BreakSignal) {
+          break;
+        }
+        if (result instanceof ContinueSignal) {
+          continue;
+        }
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
+      }
+      return undefined;
+    }
+
+    // For WhileStatement with async body
+    if (node.type === 'WhileStatement') {
+      while (await this.evaluateAsync(node.test, env)) {
+        const result = await this.evaluateAsync(node.body, env);
+        if (result instanceof BreakSignal) {
+          break;
+        }
+        if (result instanceof ContinueSignal) {
+          continue;
+        }
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
+      }
+      return undefined;
+    }
+
+    // For DoWhileStatement with async body
+    if (node.type === 'DoWhileStatement') {
+      do {
+        const result = await this.evaluateAsync(node.body, env);
+        if (result instanceof BreakSignal) {
+          break;
+        }
+        if (result instanceof ContinueSignal) {
+          continue;
+        }
+        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+          return result;
+        }
+      } while (await this.evaluateAsync(node.test, env));
+      return undefined;
+    }
+
+    // For IfStatement with async branches
+    if (node.type === 'IfStatement') {
+      const test = await this.evaluateAsync(node.test, env);
+      if (test) {
+        return await this.evaluateAsync(node.consequent, env);
+      } else if (node.alternate) {
+        return await this.evaluateAsync(node.alternate, env);
+      }
+      return undefined;
+    }
+
+    // For SwitchStatement with async cases
+    if (node.type === 'SwitchStatement') {
+      const discriminant = await this.evaluateAsync(node.discriminant, env);
+      let matched = false;
+
+      for (const switchCase of node.cases) {
+        if (!matched && switchCase.test) {
+          const testValue = await this.evaluateAsync(switchCase.test, env);
+          if (testValue === discriminant) {
+            matched = true;
+          }
+        } else if (!switchCase.test) {
+          matched = true;
+        }
+
+        if (matched) {
+          for (const statement of switchCase.consequent) {
+            const result = await this.evaluateAsync(statement, env);
+            if (result instanceof BreakSignal) {
+              return undefined;
+            }
+            if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+              return result;
+            }
+          }
+        }
+      }
+      return undefined;
+    }
+
+    // For ConditionalExpression (ternary) with async operands
+    if (node.type === 'ConditionalExpression') {
+      const test = await this.evaluateAsync(node.test, env);
+      return test
+        ? await this.evaluateAsync(node.consequent, env)
+        : await this.evaluateAsync(node.alternate, env);
+    }
+
+    // For AssignmentExpression with async value
+    if (node.type === 'AssignmentExpression') {
+      const value = await this.evaluateAsync(node.right, env);
+
+      if (node.left.type === 'Identifier') {
+        const name = node.left.name;
+        if (node.operator === '=') {
+          if (env.has(name)) {
+            env.set(name, value);
+          } else {
+            env.define(name, value);
+          }
+          return value;
+        } else {
+          const current = env.get(name);
+          const newValue = this.applyCompoundAssignment(node.operator, current, value);
+          env.set(name, newValue);
+          return newValue;
+        }
+      } else if (node.left.type === 'MemberExpression') {
+        const obj = await this.evaluateAsync(node.left.object, env);
+        const prop = node.left.computed
+          ? await this.evaluateAsync(node.left.property, env)
+          : node.left.property.name;
+
+        if (node.operator === '=') {
+          obj[prop] = value;
+          return value;
+        } else {
+          const newValue = this.applyCompoundAssignment(node.operator, obj[prop], value);
+          obj[prop] = newValue;
+          return newValue;
+        }
+      }
+      throw new Error('Invalid assignment target');
+    }
+
+    // For UnaryExpression with async argument
+    if (node.type === 'UnaryExpression') {
+      if (node.operator === 'delete' && node.argument.type === 'MemberExpression') {
+        const obj = await this.evaluateAsync(node.argument.object, env);
+        const prop = node.argument.computed
+          ? await this.evaluateAsync(node.argument.property, env)
+          : node.argument.property.name;
+        return delete obj[prop];
+      }
+      const argument = await this.evaluateAsync(node.argument, env);
+      switch (node.operator) {
+        case '+': return +argument;
+        case '-': return -argument;
+        case '!': return !argument;
+        case '~': return ~argument;
+        case 'typeof':
+          if (argument && argument.__isFunction) {
+            return 'function';
+          }
+          return typeof argument;
+        case 'void': return undefined;
+        case 'delete': return true;
+        default:
+          throw new Error(`Unknown unary operator: ${node.operator}`);
+      }
+    }
+
+    // For UpdateExpression with async member access
+    if (node.type === 'UpdateExpression') {
+      if (node.argument.type === 'Identifier') {
+        const name = node.argument.name;
+        const current = env.get(name);
+        const numericCurrent = (current === null || current === undefined) ? 0 : Number(current);
+        const newValue = node.operator === '++' ? numericCurrent + 1 : numericCurrent - 1;
+        env.set(name, newValue);
+        return node.prefix ? newValue : numericCurrent;
+      } else if (node.argument.type === 'MemberExpression') {
+        const obj = await this.evaluateAsync(node.argument.object, env);
+        if (obj === null || obj === undefined) {
+          throw new TypeError(
+            `Cannot read properties of ${obj} (reading '${
+              node.argument.computed
+                ? await this.evaluateAsync(node.argument.property, env)
+                : node.argument.property.name
+            }')`
+          );
+        }
+        const prop = node.argument.computed
+          ? await this.evaluateAsync(node.argument.property, env)
+          : node.argument.property.name;
+        let current = obj[prop];
+        const numericCurrent = (current === null || current === undefined) ? 0 : Number(current);
+        const newValue = node.operator === '++' ? numericCurrent + 1 : numericCurrent - 1;
+        obj[prop] = newValue;
+        return node.prefix ? newValue : numericCurrent;
+      }
+      throw new Error('Invalid update expression target');
+    }
+
+    // For ArrayExpression with async elements
+    if (node.type === 'ArrayExpression') {
+      const result = [];
+      for (const elem of node.elements) {
+        if (!elem) {
+          result.push(undefined);
+        } else if (elem.type === 'SpreadElement') {
+          const spreadValue = await this.evaluateAsync(elem.argument, env);
+          if (Array.isArray(spreadValue)) {
+            result.push(...spreadValue);
+          } else if (typeof spreadValue[Symbol.iterator] === 'function') {
+            result.push(...spreadValue);
+          } else {
+            throw new TypeError('Spread syntax requires an iterable');
+          }
+        } else {
+          result.push(await this.evaluateAsync(elem, env));
+        }
+      }
+      return result;
+    }
+
+    // For ObjectExpression with async values
+    if (node.type === 'ObjectExpression') {
+      const obj = {};
+      for (const prop of node.properties) {
+        if (prop.type === 'SpreadElement') {
+          const spreadValue = await this.evaluateAsync(prop.argument, env);
+          if (typeof spreadValue === 'object' && spreadValue !== null) {
+            Object.assign(obj, spreadValue);
+          }
+        } else {
+          const key = prop.key.type === 'Identifier' && !prop.computed
+            ? prop.key.name
+            : await this.evaluateAsync(prop.key, env);
+          const value = prop.value ? await this.evaluateAsync(prop.value, env) : env.get(key);
+          if (prop.method && prop.value.type === 'FunctionExpression') {
+            obj[key] = (...args) => {
+              const funcValue = this.evaluate(prop.value, env);
+              return this.callUserFunction(funcValue, args, env);
+            };
+          } else {
+            obj[key] = value;
+          }
+        }
+      }
+      return obj;
+    }
+
+    // For SequenceExpression with async expressions
+    if (node.type === 'SequenceExpression') {
+      let result;
+      for (const expr of node.expressions) {
+        result = await this.evaluateAsync(expr, env);
+      }
+      return result;
+    }
+
+    // For ThrowStatement with async argument
+    if (node.type === 'ThrowStatement') {
+      return new ThrowSignal(await this.evaluateAsync(node.argument, env));
+    }
+
+    // For FunctionDeclaration - define in environment
+    if (node.type === 'FunctionDeclaration') {
+      return this.evaluateFunctionDeclaration(node, env);
+    }
+
+    // For FunctionExpression/ArrowFunctionExpression - create function
+    if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+      return this.evaluateFunctionExpression(node, env);
+    }
+
+    // For ClassDeclaration
+    if (node.type === 'ClassDeclaration') {
+      return this.evaluateClassDeclaration(node, env);
+    }
+
+    // For ClassExpression
+    if (node.type === 'ClassExpression') {
+      return this.evaluateClassExpression(node, env);
+    }
+
+    // Only leaf nodes should fall through to sync evaluate
+    // These have no sub-expressions that could contain await
+    if (['Literal', 'Identifier', 'BreakStatement', 'ContinueStatement',
+         'EmptyStatement', 'ThisExpression', 'Super'].includes(node.type)) {
+      return this.evaluate(node, env);
+    }
+
+    // Safety check - if we get here, we missed a node type
+    throw new Error(`Unhandled node type in evaluateAsync: ${node.type}`);
   }
 
   evaluate(node, env) {
