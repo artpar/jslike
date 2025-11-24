@@ -128,7 +128,7 @@
             background: #0e639c;
         }
 
-        #output {
+        #output, #ast {
             width: 100%;
             height: 100%;
             background: #1e1e1e;
@@ -139,6 +139,119 @@
             overflow: auto;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        .tabs {
+            display: flex;
+            background: #252526;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #d4d4d4;
+        }
+
+        .tab.active {
+            color: #d4d4d4;
+            border-bottom-color: #0e639c;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* AST Tree Styles */
+        .ast-tree {
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .ast-node {
+            margin-left: 16px;
+        }
+
+        .ast-key {
+            color: #9cdcfe;
+        }
+
+        .ast-string {
+            color: #ce9178;
+        }
+
+        .ast-number {
+            color: #b5cea8;
+        }
+
+        .ast-boolean {
+            color: #569cd6;
+        }
+
+        .ast-null {
+            color: #569cd6;
+        }
+
+        .ast-type {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        .ast-toggle {
+            cursor: pointer;
+            user-select: none;
+            color: #888;
+        }
+
+        .ast-toggle:hover {
+            color: #d4d4d4;
+        }
+
+        .ast-collapsed > .ast-children {
+            display: none;
+        }
+
+        .ast-collapsed > .ast-toggle::before {
+            content: '+ ';
+        }
+
+        .ast-expanded > .ast-toggle::before {
+            content: '- ';
+        }
+
+        .ast-toolbar {
+            padding: 8px 16px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .ast-toolbar label {
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+
+        .ast-toolbar input[type="checkbox"] {
+            cursor: pointer;
         }
 
         .output-line {
@@ -250,9 +363,25 @@
         <div class="divider" id="divider"></div>
 
         <div class="panel">
-            <div class="panel-header">Output</div>
+            <div class="tabs">
+                <div class="tab active" data-tab="output">Output</div>
+                <div class="tab" data-tab="ast">AST</div>
+            </div>
             <div class="panel-content">
-                <div id="output"></div>
+                <div id="output" class="tab-content active"></div>
+                <div id="ast-container" class="tab-content">
+                    <div class="ast-toolbar">
+                        <label>
+                            <input type="checkbox" id="hideLocations" checked>
+                            Hide locations
+                        </label>
+                        <label>
+                            <input type="checkbox" id="expandAll">
+                            Expand all
+                        </label>
+                    </div>
+                    <div id="ast"></div>
+                </div>
             </div>
         </div>
     </main>
@@ -278,6 +407,122 @@
     <script>
         let editor;
         let outputElement;
+        let astElement;
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+
+                // Update tab active state
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                // Update content visibility
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+
+                if (tabName === 'output') {
+                    document.getElementById('output').classList.add('active');
+                } else if (tabName === 'ast') {
+                    document.getElementById('ast-container').classList.add('active');
+                }
+            });
+        });
+
+        // AST rendering functions
+        function renderAST(node, hideLocations = true, expandAll = false) {
+            if (node === null) {
+                return '<span class="ast-null">null</span>';
+            }
+
+            if (node === undefined) {
+                return '<span class="ast-null">undefined</span>';
+            }
+
+            if (typeof node === 'string') {
+                return '<span class="ast-string">"' + escapeHtml(node) + '"</span>';
+            }
+
+            if (typeof node === 'number') {
+                return '<span class="ast-number">' + node + '</span>';
+            }
+
+            if (typeof node === 'boolean') {
+                return '<span class="ast-boolean">' + node + '</span>';
+            }
+
+            if (Array.isArray(node)) {
+                if (node.length === 0) {
+                    return '[]';
+                }
+
+                const items = node.map((item, i) => {
+                    return '<div class="ast-node">' + renderAST(item, hideLocations, expandAll) + (i < node.length - 1 ? ',' : '') + '</div>';
+                }).join('');
+
+                const collapsed = !expandAll && node.length > 3 ? 'ast-collapsed' : 'ast-expanded';
+                return '<span class="ast-toggle" onclick="toggleAstNode(this)"></span>[<span class="ast-children">' + items + '</span>]';
+            }
+
+            if (typeof node === 'object') {
+                const keys = Object.keys(node).filter(key => {
+                    if (hideLocations && (key === 'loc' || key === 'start' || key === 'end' || key === 'range')) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                if (keys.length === 0) {
+                    return '{}';
+                }
+
+                const items = keys.map((key, i) => {
+                    const value = node[key];
+                    const keyClass = key === 'type' ? 'ast-type' : 'ast-key';
+                    return '<div class="ast-node"><span class="' + keyClass + '">' + key + '</span>: ' +
+                           renderAST(value, hideLocations, expandAll) +
+                           (i < keys.length - 1 ? ',' : '') + '</div>';
+                }).join('');
+
+                // Determine if should be collapsed by default
+                const isLargeNode = keys.length > 5 || (node.body && Array.isArray(node.body));
+                const collapsed = !expandAll && isLargeNode ? 'ast-collapsed' : 'ast-expanded';
+
+                return '<span class="ast-toggle" onclick="toggleAstNode(this)"></span>{<span class="ast-children">' + items + '</span>}';
+            }
+
+            return String(node);
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;')
+                     .replace(/</g, '&lt;')
+                     .replace(/>/g, '&gt;')
+                     .replace(/"/g, '&quot;');
+        }
+
+        function toggleAstNode(element) {
+            const parent = element.parentElement;
+            if (parent.classList.contains('ast-collapsed')) {
+                parent.classList.remove('ast-collapsed');
+                parent.classList.add('ast-expanded');
+            } else {
+                parent.classList.remove('ast-expanded');
+                parent.classList.add('ast-collapsed');
+            }
+        }
+
+        function displayAST(ast) {
+            const hideLocations = document.getElementById('hideLocations').checked;
+            const expandAll = document.getElementById('expandAll').checked;
+
+            astElement.innerHTML = '<div class="ast-tree ast-expanded">' + renderAST(ast, hideLocations, expandAll) + '</div>';
+        }
+
+        // Re-render AST when options change
+        let currentAST = null;
 
         // Examples
         const examples = {
@@ -630,6 +875,16 @@ main();`
         });
 
         outputElement = document.getElementById('output');
+        astElement = document.getElementById('ast');
+
+        // AST option change handlers
+        document.getElementById('hideLocations').addEventListener('change', function() {
+            if (currentAST) displayAST(currentAST);
+        });
+
+        document.getElementById('expandAll').addEventListener('change', function() {
+            if (currentAST) displayAST(currentAST);
+        });
 
         // Example selector
         document.getElementById('examples').addEventListener('change', function(e) {
@@ -727,6 +982,10 @@ main();`
             };
 
             try {
+                // Parse code to get AST
+                currentAST = JSLike.parse(code);
+                displayAST(currentAST);
+
                 // Create environment with custom console
                 const env = JSLike.createEnvironment();
                 env.set('console', customConsole);
@@ -744,6 +1003,10 @@ main();`
                 setStatus(`Completed in ${(endTime - startTime).toFixed(2)}ms`);
             } catch (error) {
                 appendOutput('Error: ' + error.message, 'output-error');
+                // Still try to show AST if parsing succeeded but execution failed
+                if (!currentAST) {
+                    astElement.innerHTML = '<span class="output-error">Parse Error: ' + error.message + '</span>';
+                }
                 setStatus('Error');
             } finally {
                 runBtn.disabled = false;
@@ -753,6 +1016,7 @@ main();`
         // Make functions globally available
         window.runCode = runCode;
         window.clearOutput = clearOutput;
+        window.toggleAstNode = toggleAstNode;
     </script>
 </body>
 </html>
