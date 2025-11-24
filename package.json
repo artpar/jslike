@@ -53,6 +53,7 @@
   },
   "scripts": {
     "build": "node scripts/bundle-acorn.js && tsup",
+    "build:playground": "node scripts/build-playground.js",
     "start": "node bin/jslike.js",
     "repl": "node bin/repl.js",
     "test": "vitest run",

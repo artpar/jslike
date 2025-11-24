@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSLike Playground</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #252526;
+            padding: 12px 20px;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #569cd6;
+        }
+
+        .logo span {
+            color: #dcdcaa;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        button:disabled {
+            background: #3c3c3c;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #3c3c3c;
+        }
+
+        .btn-secondary:hover {
+            background: #4c4c4c;
+        }
+
+        select {
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #5c5c5c;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .panel-header {
+            background: #252526;
+            padding: 8px 16px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #editor {
+            width: 100%;
+            height: 100%;
+        }
+
+        .divider {
+            width: 4px;
+            background: #3c3c3c;
+            cursor: col-resize;
+        }
+
+        .divider:hover {
+            background: #0e639c;
+        }
+
+        #output {
+            width: 100%;
+            height: 100%;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            padding: 16px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .output-line {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+
+        .output-error {
+            color: #f14c4c;
+        }
+
+        .output-warn {
+            color: #cca700;
+        }
+
+        .output-info {
+            color: #3794ff;
+        }
+
+        .output-success {
+            color: #89d185;
+        }
+
+        footer {
+            background: #007acc;
+            padding: 4px 20px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #89d185;
+        }
+
+        .status-indicator.running {
+            background: #cca700;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @media (max-width: 768px) {
+            main {
+                flex-direction: column;
+            }
+
+            .divider {
+                width: 100%;
+                height: 4px;
+                cursor: row-resize;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">JS<span>Like</span> Playground</div>
+        <div class="toolbar">
+            <select id="examples">
+                <option value="">Load Example...</option>
+                <option value="hello">Hello World</option>
+                <option value="functions">Functions</option>
+                <option value="loops">Loops</option>
+                <option value="arrays">Arrays & Objects</option>
+                <option value="algorithms">Algorithms</option>
+                <option value="classes">Classes</option>
+                <option value="async">Async/Await</option>
+            </select>
+            <button onclick="runCode()" id="runBtn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3 2l10 6-10 6V2z"/>
+                </svg>
+                Run
+            </button>
+            <button onclick="clearOutput()" class="btn-secondary">Clear</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="panel">
+            <div class="panel-header">Editor</div>
+            <div class="panel-content">
+                <div id="editor"></div>
+            </div>
+        </div>
+
+        <div class="divider" id="divider"></div>
+
+        <div class="panel">
+            <div class="panel-header">Output</div>
+            <div class="panel-content">
+                <div id="output"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">Ready</span>
+        </div>
+        <div>
+            <a href="https://github.com/artpar/jslike" target="_blank">GitHub</a>
+            &nbsp;|&nbsp;
+            <a href="https://www.npmjs.com/package/jslike" target="_blank">npm</a>
+        </div>
+    </footer>
+
+    <!-- Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+
+    <!-- JSLike Bundle -->
+    <script src="./jslike.browser.js"></script>
+
+    <script>
+        let editor;
+        let outputElement;
+
+        // Examples
+        const examples = {
+            hello: `// Hello World
+console.log("Hello, World!");
+
+const name = "JSLike";
+console.log("Welcome to " + name + "!");
+
+// Variables
+const x = 42;
+let y = 10;
+console.log("x + y =", x + y);`,
+
+            functions: `// Functions Demo
+function greet(name) {
+    return "Hello, " + name + "!";
+}
+console.log(greet("World"));
+
+// Arrow functions
+const double = (n) => n * 2;
+const square = n => n * n;
+console.log("double(5) =", double(5));
+console.log("square(4) =", square(4));
+
+// Higher-order functions
+function map(arr, fn) {
+    const result = [];
+    for (let i = 0; i < arr.length; i++) {
+        result.push(fn(arr[i]));
+    }
+    return result;
+}
+
+const numbers = [1, 2, 3, 4, 5];
+console.log("Doubled:", map(numbers, double));
+console.log("Squared:", map(numbers, square));
+
+// Closures
+function counter() {
+    let count = 0;
+    return function() {
+        count = count + 1;
+        return count;
+    };
+}
+
+const count = counter();
+console.log("Count:", count());
+console.log("Count:", count());
+console.log("Count:", count());`,
+
+            loops: `// Loops Demo
+
+// For loop
+console.log("For loop:");
+for (let i = 1; i <= 5; i++) {
+    console.log("  " + i);
+}
+
+// While loop
+console.log("\\nWhile loop:");
+let j = 1;
+while (j <= 3) {
+    console.log("  " + j);
+    j++;
+}
+
+// For-of loop
+console.log("\\nFor-of loop:");
+const fruits = ["apple", "banana", "cherry"];
+for (const fruit of fruits) {
+    console.log("  " + fruit);
+}
+
+// For-in loop
+console.log("\\nFor-in loop:");
+const person = { name: "Alice", age: 30 };
+for (const key in person) {
+    console.log("  " + key + ": " + person[key]);
+}
+
+// Nested loops
+console.log("\\nMultiplication table (3x3):");
+for (let i = 1; i <= 3; i++) {
+    let row = "";
+    for (let j = 1; j <= 3; j++) {
+        row += (i * j) + "\\t";
+    }
+    console.log(row);
+}`,
+
+            arrays: `// Arrays and Objects Demo
+
+// Arrays
+const numbers = [1, 2, 3, 4, 5];
+console.log("Array:", numbers);
+console.log("First:", numbers[0]);
+console.log("Length:", numbers.length);
+
+// Array methods
+numbers.push(6);
+console.log("After push:", numbers);
+
+const popped = numbers.pop();
+console.log("Popped:", popped);
+
+// Objects
+const person = {
+    name: "Alice",
+    age: 30,
+    greet: function() {
+        return "Hi, I'm " + this.name;
+    }
+};
+
+console.log("\\nObject:", person);
+console.log("Name:", person.name);
+console.log("Greeting:", person.greet());
+
+// Nested objects
+const data = {
+    users: [
+        { id: 1, name: "Alice" },
+        { id: 2, name: "Bob" }
+    ],
+    count: 2
+};
+
+console.log("\\nNested data:");
+console.log("User count:", data.count);
+for (const user of data.users) {
+    console.log("  User:", user.id, user.name);
+}
+
+// Destructuring
+const { name, age } = person;
+console.log("\\nDestructured:", name, age);`,
+
+            algorithms: `// Algorithms Demo
+
+// Fibonacci sequence
+function fibonacci(n) {
+    if (n <= 1) return n;
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+console.log("Fibonacci sequence:");
+for (let i = 0; i < 10; i++) {
+    console.log("  fib(" + i + ") =", fibonacci(i));
+}
+
+// Factorial
+function factorial(n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+
+console.log("\\nFactorials:");
+for (let i = 0; i <= 6; i++) {
+    console.log("  " + i + "! =", factorial(i));
+}
+
+// Bubble sort
+function bubbleSort(arr) {
+    const n = arr.length;
+    for (let i = 0; i < n - 1; i++) {
+        for (let j = 0; j < n - i - 1; j++) {
+            if (arr[j] > arr[j + 1]) {
+                const temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+        }
+    }
+    return arr;
+}
+
+const unsorted = [64, 34, 25, 12, 22, 11, 90];
+console.log("\\nBubble Sort:");
+console.log("  Before:", unsorted);
+console.log("  After:", bubbleSort(unsorted));
+
+// Binary search
+function binarySearch(arr, target) {
+    let left = 0;
+    let right = arr.length - 1;
+
+    while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (arr[mid] === target) return mid;
+        if (arr[mid] < target) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return -1;
+}
+
+const sorted = [1, 3, 5, 7, 9, 11, 13];
+console.log("\\nBinary Search in", sorted);
+console.log("  Index of 7:", binarySearch(sorted, 7));
+console.log("  Index of 4:", binarySearch(sorted, 4));`,
+
+            classes: `// Classes Demo
+
+class Animal {
+    constructor(name) {
+        this.name = name;
+    }
+
+    speak() {
+        console.log(this.name + " makes a sound");
+    }
+}
+
+class Dog extends Animal {
+    constructor(name, breed) {
+        super(name);
+        this.breed = breed;
+    }
+
+    speak() {
+        console.log(this.name + " barks!");
+    }
+
+    info() {
+        return this.name + " is a " + this.breed;
+    }
+}
+
+const dog = new Dog("Rex", "German Shepherd");
+dog.speak();
+console.log(dog.info());
+
+// Class with static methods
+class MathUtils {
+    static PI = 3.14159;
+
+    static square(x) {
+        return x * x;
+    }
+
+    static cube(x) {
+        return x * x * x;
+    }
+}
+
+console.log("\\nStatic methods:");
+console.log("PI:", MathUtils.PI);
+console.log("square(5):", MathUtils.square(5));
+console.log("cube(3):", MathUtils.cube(3));
+
+// Class with getters/setters
+class Rectangle {
+    constructor(width, height) {
+        this._width = width;
+        this._height = height;
+    }
+
+    get area() {
+        return this._width * this._height;
+    }
+
+    get perimeter() {
+        return 2 * (this._width + this._height);
+    }
+
+    set width(value) {
+        this._width = value;
+    }
+}
+
+const rect = new Rectangle(5, 3);
+console.log("\\nRectangle:");
+console.log("Area:", rect.area);
+console.log("Perimeter:", rect.perimeter);`,
+
+            async: `// Async/Await Demo
+
+// Simulated async function
+async function fetchData(id) {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return { id: id, data: "Item " + id };
+}
+
+// Using async/await
+async function main() {
+    console.log("Fetching data...");
+
+    const result1 = await fetchData(1);
+    console.log("Got:", result1);
+
+    const result2 = await fetchData(2);
+    console.log("Got:", result2);
+
+    // Promise.all equivalent
+    console.log("\\nFetching multiple...");
+    const promises = [fetchData(3), fetchData(4), fetchData(5)];
+    const results = await Promise.all(promises);
+
+    for (const item of results) {
+        console.log("Got:", item);
+    }
+
+    console.log("\\nDone!");
+}
+
+main();`
+        };
+
+        // Initialize Monaco Editor
+        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+
+        require(['vs/editor/editor.main'], function () {
+            // Define custom theme
+            monaco.editor.defineTheme('jslike-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [],
+                colors: {
+                    'editor.background': '#1e1e1e'
+                }
+            });
+
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: examples.hello,
+                language: 'javascript',
+                theme: 'jslike-dark',
+                fontSize: 14,
+                minimap: { enabled: false },
+                automaticLayout: true,
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                padding: { top: 16 }
+            });
+
+            // Keyboard shortcut to run
+            editor.addAction({
+                id: 'run-code',
+                label: 'Run Code',
+                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+                run: function() {
+                    runCode();
+                }
+            });
+        });
+
+        outputElement = document.getElementById('output');
+
+        // Example selector
+        document.getElementById('examples').addEventListener('change', function(e) {
+            if (e.target.value && examples[e.target.value]) {
+                editor.setValue(examples[e.target.value]);
+                e.target.value = '';
+            }
+        });
+
+        // Divider resize
+        const divider = document.getElementById('divider');
+        let isResizing = false;
+
+        divider.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+
+            const container = document.querySelector('main');
+            const panels = container.querySelectorAll('.panel');
+            const containerRect = container.getBoundingClientRect();
+            const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+            panels[0].style.flex = `0 0 ${percentage}%`;
+            panels[1].style.flex = `0 0 ${100 - percentage}%`;
+        });
+
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+            document.body.style.cursor = '';
+        });
+
+        // Output functions
+        function appendOutput(text, className = '') {
+            const line = document.createElement('div');
+            line.className = 'output-line ' + className;
+            line.textContent = text;
+            outputElement.appendChild(line);
+            outputElement.scrollTop = outputElement.scrollHeight;
+        }
+
+        function clearOutput() {
+            outputElement.innerHTML = '';
+        }
+
+        function setStatus(text, running = false) {
+            document.getElementById('statusText').textContent = text;
+            const indicator = document.getElementById('statusIndicator');
+            if (running) {
+                indicator.classList.add('running');
+            } else {
+                indicator.classList.remove('running');
+            }
+        }
+
+        // Run code
+        async function runCode() {
+            const code = editor.getValue();
+            clearOutput();
+
+            const runBtn = document.getElementById('runBtn');
+            runBtn.disabled = true;
+            setStatus('Running...', true);
+
+            // Capture console output
+            const logs = [];
+            const customConsole = {
+                log: (...args) => {
+                    const text = args.map(a =>
+                        typeof a === 'object' ? JSON.stringify(a) : String(a)
+                    ).join(' ');
+                    appendOutput(text);
+                },
+                error: (...args) => {
+                    const text = args.map(a =>
+                        typeof a === 'object' ? JSON.stringify(a) : String(a)
+                    ).join(' ');
+                    appendOutput(text, 'output-error');
+                },
+                warn: (...args) => {
+                    const text = args.map(a =>
+                        typeof a === 'object' ? JSON.stringify(a) : String(a)
+                    ).join(' ');
+                    appendOutput(text, 'output-warn');
+                },
+                info: (...args) => {
+                    const text = args.map(a =>
+                        typeof a === 'object' ? JSON.stringify(a) : String(a)
+                    ).join(' ');
+                    appendOutput(text, 'output-info');
+                }
+            };
+
+            try {
+                // Create environment with custom console
+                const env = JSLike.createEnvironment();
+                env.set('console', customConsole);
+
+                // Execute
+                const startTime = performance.now();
+                const result = await JSLike.execute(code, env);
+                const endTime = performance.now();
+
+                // Show result if not undefined
+                if (result !== undefined) {
+                    appendOutput('=> ' + (typeof result === 'object' ? JSON.stringify(result) : String(result)), 'output-success');
+                }
+
+                setStatus(`Completed in ${(endTime - startTime).toFixed(2)}ms`);
+            } catch (error) {
+                appendOutput('Error: ' + error.message, 'output-error');
+                setStatus('Error');
+            } finally {
+                runBtn.disabled = false;
+            }
+        }
+
+        // Make functions globally available
+        window.runCode = runCode;
+        window.clearOutput = clearOutput;
+    </script>
+</body>
+</html>
