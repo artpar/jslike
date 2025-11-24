@@ -1,20 +1,58 @@
 {
   "name": "jslike",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
-  "main": "src/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./validator": "./src/validator/index.js",
-    "./editor/monaco": "./src/editor/monaco/index.js",
-    "./src/editor/wang-prism": "./src/editor/wang-prism.js"
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./validator": {
+      "import": {
+        "types": "./dist/validator/index.d.ts",
+        "default": "./dist/validator/index.js"
+      },
+      "require": {
+        "types": "./dist/validator/index.d.cts",
+        "default": "./dist/validator/index.cjs"
+      }
+    },
+    "./editor/monaco": {
+      "import": {
+        "types": "./dist/editor/monaco/index.d.ts",
+        "default": "./dist/editor/monaco/index.js"
+      },
+      "require": {
+        "types": "./dist/editor/monaco/index.d.cts",
+        "default": "./dist/editor/monaco/index.cjs"
+      }
+    },
+    "./editor/wang-prism": {
+      "import": {
+        "types": "./dist/editor/wang-prism.d.ts",
+        "default": "./dist/editor/wang-prism.js"
+      },
+      "require": {
+        "types": "./dist/editor/wang-prism.d.cts",
+        "default": "./dist/editor/wang-prism.cjs"
+      }
+    }
   },
   "bin": {
     "jslike": "./bin/jslike.js"
   },
   "scripts": {
-    "build": "node scripts/bundle-acorn.js",
+    "build": "node scripts/bundle-acorn.js && tsup",
     "start": "node bin/jslike.js",
     "repl": "node bin/repl.js",
     "test": "vitest run",
@@ -32,14 +70,15 @@
   "author": "Parth Mudgal <artpar@gmail.com>",
   "license": "MIT",
   "files": [
-    "src",
+    "dist",
     "bin",
     "README.md",
-    "LICENSE",
-    "!src/grammar"
+    "LICENSE"
   ],
   "devDependencies": {
     "acorn": "^8.15.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.10"
   }
 }

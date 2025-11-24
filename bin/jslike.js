@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { execute } from '../src/index.js';
+import { execute } from '../dist/index.js';
 
 const args = process.argv.slice(2);
 
