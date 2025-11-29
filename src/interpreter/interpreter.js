@@ -1103,7 +1103,8 @@ export class Interpreter {
       return undefined;
     }
 
-    const args = node.arguments.map(arg => this.evaluate(arg, env));
+    const rawArgs = node.arguments.map(arg => this.evaluate(arg, env));
+    const args = this.flattenSpreadArgs(rawArgs);
 
     if (typeof callee === 'function') {
       // Native JavaScript function or class method
@@ -1122,6 +1123,19 @@ export class Interpreter {
     }
 
     throw new TypeError(`${node.callee.name || 'Expression'} is not a function`);
+  }
+
+  // Helper to flatten spread elements in argument arrays
+  flattenSpreadArgs(args) {
+    const result = [];
+    for (const arg of args) {
+      if (arg && arg.__spread === true && Array.isArray(arg.__values)) {
+        result.push(...arg.__values);
+      } else {
+        result.push(arg);
+      }
+    }
+    return result;
   }
 
   // Helper to get a readable name for an expression (for error messages)
@@ -1340,7 +1354,8 @@ export class Interpreter {
 
   evaluateNewExpression(node, env) {
     const constructor = this.evaluate(node.callee, env);
-    const args = node.arguments.map(arg => this.evaluate(arg, env));
+    const rawArgs = node.arguments.map(arg => this.evaluate(arg, env));
+    const args = this.flattenSpreadArgs(rawArgs);
 
     // Handle user-defined functions (including async and arrow functions)
     if (constructor && constructor.__isFunction) {
