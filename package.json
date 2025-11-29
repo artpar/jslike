@@ -1,6 +1,6 @@
 {
   "name": "jslike",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -38,6 +38,16 @@
       }
     },
     "./editor/wang-prism": {
+      "import": {
+        "types": "./dist/editor/wang-prism.d.ts",
+        "default": "./dist/editor/wang-prism.js"
+      },
+      "require": {
+        "types": "./dist/editor/wang-prism.d.cts",
+        "default": "./dist/editor/wang-prism.cjs"
+      }
+    },
+    "./src/editor/wang-prism": {
       "import": {
         "types": "./dist/editor/wang-prism.d.ts",
         "default": "./dist/editor/wang-prism.js"
