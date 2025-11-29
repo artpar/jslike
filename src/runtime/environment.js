@@ -9,7 +9,17 @@ export class Environment {
 
   define(name, value, isConst = false) {
     if (this.vars.has(name)) {
-      throw new Error(`Variable '${name}' already declared`);
+      // Allow redeclaration for non-const (REPL-style behavior)
+      // But cannot redeclare a const
+      if (this.consts.has(name)) {
+        throw new Error(`Cannot redeclare const '${name}'`);
+      }
+      // Update existing variable
+      this.vars.set(name, value);
+      if (isConst) {
+        this.consts.add(name);
+      }
+      return value;
     }
     this.vars.set(name, value);
     if (isConst) {

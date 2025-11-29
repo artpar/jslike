@@ -105,10 +105,6 @@ export async function execute(code, env = null, options = {}) {
     env = createGlobalEnvironment(new Environment());
   }
 
-  // Create a child environment for user code to allow shadowing of built-ins
-  // This prevents conflicts when user code declares variables with same names as stdlib functions
-  const userEnv = env.extend();
-
   // Create interpreter with module resolver and abort signal if provided
   const interpreter = new Interpreter(env, {
     moduleResolver: options.moduleResolver,
@@ -124,10 +120,10 @@ export async function execute(code, env = null, options = {}) {
                      containsTopLevelAwait(ast);
 
   if (needsAsync) {
-    const result = await interpreter.evaluateAsync(ast, userEnv);
+    const result = await interpreter.evaluateAsync(ast, env);
     return result instanceof ReturnValue ? result.value : result;
   } else {
-    const result = interpreter.evaluate(ast, userEnv);
+    const result = interpreter.evaluate(ast, env);
     return result instanceof ReturnValue ? result.value : result;
   }
 }

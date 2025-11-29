@@ -2,49 +2,42 @@
 // These tests verify that await works correctly inside loops, conditionals, etc.
 // Bug: evaluateAsync was missing handlers for control flow, causing await to return Promise objects
 
+import { describe, it, expect, beforeEach } from 'vitest';
 import { WangInterpreter } from '../src/index.js';
 
-const tests = [];
+describe('Async/Await in Control Flow', () => {
+  let interpreter;
 
-// Helper to create interpreter with async function injected
-function createInterpreterWithAsyncFunc() {
-  const interpreter = new WangInterpreter();
+  // Helper to create interpreter with async function injected
+  beforeEach(() => {
+    interpreter = new WangInterpreter();
 
-  // Inject async function that returns a value after a delay
-  interpreter.setVariable('asyncGet', async (value) => {
-    return value;
+    // Inject async function that returns a value after a delay
+    interpreter.setVariable('asyncGet', async (value) => {
+      return value;
+    });
+
+    // Inject async function that simulates DOM query
+    interpreter.setVariable('dom_querySelector', async (params) => {
+      return {
+        id: params.id || 'element',
+        tagName: 'DIV',
+        innerText: `Content for ${params.id || 'element'}`
+      };
+    });
+
+    // Inject async function that returns an array (like querySelectorAll)
+    interpreter.setVariable('dom_querySelectorAll', async (params) => {
+      const count = params.count || 3;
+      const result = [];
+      for (let i = 0; i < count; i++) {
+        result.push({ id: `item-${i}`, index: i });
+      }
+      return result;
+    });
   });
 
-  // Inject async function that simulates DOM query
-  interpreter.setVariable('dom_querySelector', async (params) => {
-    return {
-      id: params.id || 'element',
-      tagName: 'DIV',
-      innerText: `Content for ${params.id || 'element'}`
-    };
-  });
-
-  // Inject async function that returns an array (like querySelectorAll)
-  interpreter.setVariable('dom_querySelectorAll', async (params) => {
-    const count = params.count || 3;
-    const result = [];
-    for (let i = 0; i < count; i++) {
-      result.push({ id: `item-${i}`, index: i });
-    }
-    return result;
-  });
-
-  return interpreter;
-}
-
-// =============================================================================
-// TEST 1: Await inside for loop (THE ORIGINAL BUG)
-// =============================================================================
-tests.push({
-  name: 'Await inside for loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await inside for loop', async () => {
     const result = await interpreter.execute(`
       let results = [];
       for (let i = 0; i < 3; i++) {
@@ -54,27 +47,12 @@ tests.push({
       results
     `);
 
-    // Should be [0, 10, 20], NOT [Promise, Promise, Promise]
-    if (!Array.isArray(result)) {
-      throw new Error(`Expected array, got ${typeof result}`);
-    }
-    if (result.length !== 3) {
-      throw new Error(`Expected 3 items, got ${result.length}`);
-    }
-    if (result[0] !== 0 || result[1] !== 10 || result[2] !== 20) {
-      throw new Error(`Expected [0, 10, 20], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(3);
+    expect(result).toEqual([0, 10, 20]);
+  });
 
-// =============================================================================
-// TEST 2: Await inside for-of loop
-// =============================================================================
-tests.push({
-  name: 'Await inside for-of loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await inside for-of loop', async () => {
     const result = await interpreter.execute(`
       let items = [1, 2, 3];
       let results = [];
@@ -85,20 +63,10 @@ tests.push({
       results
     `);
 
-    if (result[0] !== 2 || result[1] !== 4 || result[2] !== 6) {
-      throw new Error(`Expected [2, 4, 6], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([2, 4, 6]);
+  });
 
-// =============================================================================
-// TEST 3: Await inside for-in loop
-// =============================================================================
-tests.push({
-  name: 'Await inside for-in loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await inside for-in loop', async () => {
     const result = await interpreter.execute(`
       let obj = { a: 1, b: 2, c: 3 };
       let results = [];
@@ -109,20 +77,12 @@ tests.push({
       results
     `);
 
-    if (!result.includes('a') || !result.includes('b') || !result.includes('c')) {
-      throw new Error(`Expected ['a', 'b', 'c'], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toContain('a');
+    expect(result).toContain('b');
+    expect(result).toContain('c');
+  });
 
-// =============================================================================
-// TEST 4: Await inside while loop
-// =============================================================================
-tests.push({
-  name: 'Await inside while loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await inside while loop', async () => {
     const result = await interpreter.execute(`
       let i = 0;
       let sum = 0;
@@ -134,21 +94,10 @@ tests.push({
       sum
     `);
 
-    // 1 + 2 + 3 = 6
-    if (result !== 6) {
-      throw new Error(`Expected 6, got ${result}`);
-    }
-  }
-});
+    expect(result).toBe(6);
+  });
 
-// =============================================================================
-// TEST 5: Await inside do-while loop
-// =============================================================================
-tests.push({
-  name: 'Await inside do-while loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await inside do-while loop', async () => {
     const result = await interpreter.execute(`
       let i = 0;
       let results = [];
@@ -160,20 +109,10 @@ tests.push({
       results
     `);
 
-    if (result[0] !== 0 || result[1] !== 1 || result[2] !== 2) {
-      throw new Error(`Expected [0, 1, 2], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([0, 1, 2]);
+  });
 
-// =============================================================================
-// TEST 6: Await in if condition and branches
-// =============================================================================
-tests.push({
-  name: 'Await in if statement',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await in if statement', async () => {
     const result = await interpreter.execute(`
       let check = await asyncGet(true);
       let result;
@@ -185,20 +124,10 @@ tests.push({
       result
     `);
 
-    if (result !== "yes") {
-      throw new Error(`Expected "yes", got ${result}`);
-    }
-  }
-});
+    expect(result).toBe("yes");
+  });
 
-// =============================================================================
-// TEST 7: Await in switch statement
-// =============================================================================
-tests.push({
-  name: 'Await in switch statement',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await in switch statement', async () => {
     const result = await interpreter.execute(`
       let value = await asyncGet(2);
       let result;
@@ -215,40 +144,20 @@ tests.push({
       result
     `);
 
-    if (result !== "two") {
-      throw new Error(`Expected "two", got ${result}`);
-    }
-  }
-});
+    expect(result).toBe("two");
+  });
 
-// =============================================================================
-// TEST 8: Await in ternary operator
-// =============================================================================
-tests.push({
-  name: 'Await in ternary operator',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await in ternary operator', async () => {
     const result = await interpreter.execute(`
       let condition = await asyncGet(true);
       let result = condition ? await asyncGet("yes") : await asyncGet("no");
       result
     `);
 
-    if (result !== "yes") {
-      throw new Error(`Expected "yes", got ${result}`);
-    }
-  }
-});
+    expect(result).toBe("yes");
+  });
 
-// =============================================================================
-// TEST 9: Nested loops with await
-// =============================================================================
-tests.push({
-  name: 'Nested loops with await',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Nested loops with await', async () => {
     const result = await interpreter.execute(`
       let results = [];
       for (let i = 0; i < 2; i++) {
@@ -260,30 +169,16 @@ tests.push({
       results
     `);
 
-    // Should be [0, 1, 10, 11]
-    if (result[0] !== 0 || result[1] !== 1 || result[2] !== 10 || result[3] !== 11) {
-      throw new Error(`Expected [0, 1, 10, 11], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([0, 1, 10, 11]);
+  });
 
-// =============================================================================
-// TEST 10: Multiple sequential awaits in loop (real workflow pattern)
-// =============================================================================
-tests.push({
-  name: 'Multiple sequential awaits in loop (workflow pattern)',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Multiple sequential awaits in loop (workflow pattern)', async () => {
     const result = await interpreter.execute(`
-      // Simulate the exact pattern from the HN comments workflow
       let items = await dom_querySelectorAll({ count: 3 });
       let results = [];
 
       for (let i = 0; i < items.length; i++) {
         let item = items[i];
-
-        // Multiple awaits in sequence - this is where the bug manifested
         let element = await dom_querySelector({ id: item.id });
         let author = await dom_querySelector({ id: item.id + "-author" });
 
@@ -297,33 +192,12 @@ tests.push({
       results
     `);
 
-    if (!Array.isArray(result)) {
-      throw new Error(`Expected array, got ${typeof result}`);
-    }
-    if (result.length !== 3) {
-      throw new Error(`Expected 3 results, got ${result.length}`);
-    }
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(3);
+    expect(result[0].tagName).toBe('DIV');
+  });
 
-    // Check first result structure
-    const first = result[0];
-    if (!first.id || !first.tagName || !first.authorId) {
-      throw new Error(`Missing properties in result: ${JSON.stringify(first)}`);
-    }
-    // The mock returns id based on passed params
-    if (first.tagName !== 'DIV') {
-      throw new Error(`Expected tagName 'DIV', got '${first.tagName}'`);
-    }
-  }
-});
-
-// =============================================================================
-// TEST 11: Await in array literal (wrapped to ensure async detection)
-// =============================================================================
-tests.push({
-  name: 'Await in array literal',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await in array literal', async () => {
     const result = await interpreter.execute(`
       let a = await asyncGet(1);
       let b = await asyncGet(2);
@@ -332,20 +206,10 @@ tests.push({
       arr
     `);
 
-    if (result[0] !== 1 || result[1] !== 2 || result[2] !== 3) {
-      throw new Error(`Expected [1, 2, 3], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([1, 2, 3]);
+  });
 
-// =============================================================================
-// TEST 12: Await in object literal (wrapped to ensure async detection)
-// =============================================================================
-tests.push({
-  name: 'Await in object literal',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await in object literal', async () => {
     const result = await interpreter.execute(`
       let a = await asyncGet(1);
       let b = await asyncGet(2);
@@ -353,20 +217,10 @@ tests.push({
       obj.a + obj.b
     `);
 
-    if (result !== 3) {
-      throw new Error(`Expected 3, got ${result}`);
-    }
-  }
-});
+    expect(result).toBe(3);
+  });
 
-// =============================================================================
-// TEST 13: Await with assignment operators
-// =============================================================================
-tests.push({
-  name: 'Await with assignment',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await with assignment', async () => {
     const result = await interpreter.execute(`
       let x = 0;
       x = await asyncGet(10);
@@ -374,20 +228,10 @@ tests.push({
       x
     `);
 
-    if (result !== 15) {
-      throw new Error(`Expected 15, got ${result}`);
-    }
-  }
-});
+    expect(result).toBe(15);
+  });
 
-// =============================================================================
-// TEST 14: Await with break/continue
-// =============================================================================
-tests.push({
-  name: 'Await with break in loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await with break in loop', async () => {
     const result = await interpreter.execute(`
       let results = [];
       for (let i = 0; i < 10; i++) {
@@ -400,20 +244,10 @@ tests.push({
       results
     `);
 
-    if (result.length !== 3 || result[2] !== 2) {
-      throw new Error(`Expected [0, 1, 2], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([0, 1, 2]);
+  });
 
-// =============================================================================
-// TEST 15: Await with continue
-// =============================================================================
-tests.push({
-  name: 'Await with continue in loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await with continue in loop', async () => {
     const result = await interpreter.execute(`
       let results = [];
       for (let i = 0; i < 5; i++) {
@@ -426,21 +260,10 @@ tests.push({
       results
     `);
 
-    // Should skip 2: [0, 1, 3, 4]
-    if (result.length !== 4 || result.includes(2)) {
-      throw new Error(`Expected [0, 1, 3, 4], got [${result.join(', ')}]`);
-    }
-  }
-});
+    expect(result).toEqual([0, 1, 3, 4]);
+  });
 
-// =============================================================================
-// TEST 16: Await with early return
-// =============================================================================
-tests.push({
-  name: 'Await with return in loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Await with return in loop', async () => {
     const result = await interpreter.execute(`
       function findValue() {
         for (let i = 0; i < 10; i++) {
@@ -454,22 +277,10 @@ tests.push({
       findValue()
     `);
 
-    // Note: This test uses sync because the function body handles its own async
-    // The important thing is the loop doesn't break
-    if (result !== 5 && result !== -1) {
-      throw new Error(`Expected 5 or -1, got ${result}`);
-    }
-  }
-});
+    expect([5, -1]).toContain(result);
+  });
 
-// =============================================================================
-// TEST 17: Deep nesting - loop in if in loop
-// =============================================================================
-tests.push({
-  name: 'Deep nesting: loop in if in loop',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Deep nesting: loop in if in loop', async () => {
     const result = await interpreter.execute(`
       let results = [];
       for (let i = 0; i < 2; i++) {
@@ -484,72 +295,18 @@ tests.push({
       results
     `);
 
-    // i=0: [0, 1], i=1: [10, 11] => [0, 1, 10, 11]
-    if (result.length !== 4) {
-      throw new Error(`Expected 4 items, got ${result.length}`);
-    }
-  }
-});
+    expect(result.length).toBe(4);
+  });
 
-// =============================================================================
-// TEST 18: Verify Promise is NOT returned (explicit check)
-// =============================================================================
-tests.push({
-  name: 'Verify await returns value not Promise',
-  run: async () => {
-    const interpreter = createInterpreterWithAsyncFunc();
-
+  it('Verify await returns value not Promise', async () => {
     const result = await interpreter.execute(`
       let value = null;
       for (let i = 0; i < 1; i++) {
         value = await asyncGet(42);
       }
-      // If await didn't work, value would be a Promise object
       typeof value === 'number' ? value : 'FAIL:' + typeof value
     `);
 
-    if (result !== 42) {
-      throw new Error(`Expected 42, got ${result} - await returned Promise instead of value!`);
-    }
-  }
+    expect(result).toBe(42);
+  });
 });
-
-// =============================================================================
-// Run all tests
-// =============================================================================
-async function runTests() {
-  console.log('Testing async/await in control flow structures\n');
-  console.log('This tests the fix for evaluateAsync missing control flow handlers.\n');
-
-  let passed = 0;
-  let failed = 0;
-  const failures = [];
-
-  for (const test of tests) {
-    try {
-      await test.run();
-      console.log(`  ✅ ${test.name}`);
-      passed++;
-    } catch (error) {
-      console.log(`  ❌ ${test.name}`);
-      console.log(`     ${error.message}`);
-      failed++;
-      failures.push({ name: test.name, error: error.message });
-    }
-  }
-
-  console.log(`\n📊 Results: ${passed} passed, ${failed} failed, ${passed + failed} total`);
-
-  if (failures.length > 0) {
-    console.log('\n❌ Failed tests:');
-    for (const f of failures) {
-      console.log(`   - ${f.name}: ${f.error}`);
-    }
-  }
-
-  if (failed > 0) {
-    process.exit(1);
-  }
-}
-
-runTests();
