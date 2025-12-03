@@ -175,4 +175,48 @@ describe('Wang Parser', () => {
     expect(arrPattern.elements).toHaveLength(4);
     expect(arrPattern.elements[1]).toBeNull();
   });
+
+  it('should parse top-level await', () => {
+    const ctx = new TestContext();
+    const results = ctx.parse('let result = await someAsyncFunction()');
+
+    expect(results).toHaveLength(1);
+    const decl = results[0].body[0];
+    expect(decl.type).toBe('VariableDeclaration');
+    const init = decl.declarations[0].init;
+    expect(init.type).toBe('AwaitExpression');
+    expect(init.argument.type).toBe('CallExpression');
+  });
+
+  it('should parse multiple top-level awaits', () => {
+    const ctx = new TestContext();
+    const results = ctx.parse(`
+      let a = await fetch("url1")
+      let b = await fetch("url2")
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    `);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].body).toHaveLength(3);
+    expect(results[0].body[0].declarations[0].init.type).toBe('AwaitExpression');
+    expect(results[0].body[1].declarations[0].init.type).toBe('AwaitExpression');
+    expect(results[0].body[2].expression.type).toBe('AwaitExpression');
+  });
+
+  it('should parse top-level await in control flow', () => {
+    const ctx = new TestContext();
+    const results = ctx.parse(`
+      if (condition) {
+        await doSomething()
+      }
+      for (let i = 0; i < 3; i++) {
+        await process(i)
+      }
+    `);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].body).toHaveLength(2);
+    expect(results[0].body[0].type).toBe('IfStatement');
+    expect(results[0].body[1].type).toBe('ForStatement');
+  });
 });

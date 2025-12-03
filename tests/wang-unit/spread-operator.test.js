@@ -518,9 +518,9 @@ describe('Spread Operator', () => {
     it('should handle nested array spread in function call', async () => {
       const result = await interpreter.execute(`
         function getFirst(arr) {
-          return arr[0]
+          return arr
         }
-        const nested = [[1, 2], [3, 4]]
+        const nested = [[1, 2], [3, 4]];
         getFirst(...nested)
       `);
       expect(result).toEqual([1, 2]);
@@ -541,7 +541,7 @@ describe('Spread Operator', () => {
 
     it('should handle spread in immediately invoked function', async () => {
       const result = await interpreter.execute(`
-        const nums = [1, 2, 3]
+        const nums = [1, 2, 3];
         ((a, b, c) => a + b + c)(...nums)
       `);
       expect(result).toBe(6);
@@ -592,9 +592,9 @@ describe('Spread Operator', () => {
 
     it('should work for finding max/min of transformed values', async () => {
       const result = await interpreter.execute(`
-        const objects = [{ value: 10 }, { value: 5 }, { value: 20 }]
-        const max = Math.max(...objects.map(o => o.value))
-        const min = Math.min(...objects.map(o => o.value))
+        const objects = [{ value: 10 }, { value: 5 }, { value: 20 }];
+        const max = Math.max(...objects.map(o => o.value));
+        const min = Math.min(...objects.map(o => o.value));
         [min, max]
       `);
       expect(result).toEqual([5, 20]);
@@ -654,10 +654,10 @@ describe('Spread Operator', () => {
 
     it('should work for copying and extending arrays', async () => {
       const result = await interpreter.execute(`
-        const original = [1, 2, 3]
-        const withPrefix = [0, ...original]
-        const withSuffix = [...original, 4]
-        const withBoth = [0, ...original, 4]
+        const original = [1, 2, 3];
+        const withPrefix = [0, ...original];
+        const withSuffix = [...original, 4];
+        const withBoth = [0, ...original, 4];
         [withPrefix, withSuffix, withBoth]
       `);
       expect(result).toEqual([

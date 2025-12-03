@@ -2137,6 +2137,14 @@ export class Interpreter {
     if (Array.isArray(arg)) {
       return { __spread: true, __values: arg };
     }
+    // Strings are iterable - spread into characters
+    if (typeof arg === 'string') {
+      return { __spread: true, __values: [...arg] };
+    }
+    // Handle other iterables (like Set, Map, etc.)
+    if (arg !== null && arg !== undefined && typeof arg[Symbol.iterator] === 'function') {
+      return { __spread: true, __values: [...arg] };
+    }
     if (typeof arg === 'object' && arg !== null) {
       return { __spread: true, __values: Object.entries(arg) };
     }

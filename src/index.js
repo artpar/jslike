@@ -38,7 +38,8 @@ export function parse(code, options = {}) {
       ecmaVersion: 2022,  // Support ES2022 features (including top-level await)
       sourceType: sourceType,
       locations: true,     // Track source locations for better error messages
-      allowReturnOutsideFunction: true  // Allow top-level return statements
+      allowReturnOutsideFunction: true,  // Allow top-level return statements
+      allowAwaitOutsideFunction: true    // Allow top-level await
     });
   } catch (error) {
     // Reformat error message for consistency
