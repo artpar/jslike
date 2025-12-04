@@ -9,10 +9,17 @@ export class Interpreter {
     this.moduleCache = new Map();  // Cache loaded modules
     this.moduleExports = {};  // Track exports in current module
     this.abortSignal = options.abortSignal;
+    this.executionController = options.executionController;
   }
 
-  // Check if execution should be aborted
+  // Check if execution should be aborted (sync version)
   checkAbortSignal() {
+    // Check controller first if available
+    if (this.executionController) {
+      this.executionController._checkAbortSync();
+      return;
+    }
+    // Fall back to legacy abortSignal
     if (this.abortSignal && this.abortSignal.aborted) {
       const error = new Error('The operation was aborted');
       error.name = 'AbortError';
@@ -20,12 +27,26 @@ export class Interpreter {
     }
   }
 
+  // Checkpoint that returns a promise only when controller is present
+  // When no controller, returns null to signal no await needed
+  _getCheckpointPromise(node, env) {
+    if (this.executionController) {
+      this.executionController._setEnv(env);
+      return this.executionController._checkpoint(node);
+    } else {
+      this.checkAbortSignal();
+      return null;  // Signal that no await is needed
+    }
+  }
+
   // Async evaluation for async functions - handles await expressions
   async evaluateAsync(node, env) {
     if (!node) return undefined;
 
-    // Check for abort signal before evaluating
-    this.checkAbortSignal();
+    // Checkpoint - yields if paused, throws if aborted
+    // Only await when there's actually a promise (controller present)
+    const checkpointPromise = this._getCheckpointPromise(node, env);
+    if (checkpointPromise) await checkpointPromise;
 
     // Handle await expressions by actually awaiting the promise
     if (node.type === 'AwaitExpression') {
@@ -262,6 +283,9 @@ export class Interpreter {
         await this.evaluateAsync(node.init, forEnv);
       }
       while (!node.test || await this.evaluateAsync(node.test, forEnv)) {
+        // Checkpoint at each loop iteration (only await if controller present)
+        const cp1 = this._getCheckpointPromise(node, forEnv);
+        if (cp1) await cp1;
         const result = await this.evaluateAsync(node.body, forEnv);
         if (result instanceof BreakSignal) {
           break;
@@ -290,6 +314,9 @@ export class Interpreter {
       const isConst = node.left.kind === 'const';
 
       for (const value of iterable) {
+        // Checkpoint at each loop iteration (only await if controller present)
+        const cp2 = this._getCheckpointPromise(node, forEnv);
+        if (cp2) await cp2;
         const iterEnv = forEnv.extend();
         if (declarator.id.type === 'Identifier') {
           iterEnv.define(declarator.id.name, value, isConst);
@@ -323,6 +350,9 @@ export class Interpreter {
       forEnv.define(varName, undefined);
 
       for (const key in obj) {
+        // Checkpoint at each loop iteration (only await if controller present)
+        const cp3 = this._getCheckpointPromise(node, forEnv);
+        if (cp3) await cp3;
         forEnv.set(varName, key);
         const result = await this.evaluateAsync(node.body, forEnv);
         if (result instanceof BreakSignal) {
@@ -341,6 +371,9 @@ export class Interpreter {
     // For WhileStatement with async body
     if (node.type === 'WhileStatement') {
       while (await this.evaluateAsync(node.test, env)) {
+        // Checkpoint at each loop iteration (only await if controller present)
+        const cp4 = this._getCheckpointPromise(node, env);
+        if (cp4) await cp4;
         const result = await this.evaluateAsync(node.body, env);
         if (result instanceof BreakSignal) {
           break;
@@ -358,6 +391,9 @@ export class Interpreter {
     // For DoWhileStatement with async body
     if (node.type === 'DoWhileStatement') {
       do {
+        // Checkpoint at each loop iteration (only await if controller present)
+        const cp5 = this._getCheckpointPromise(node, env);
+        if (cp5) await cp5;
         const result = await this.evaluateAsync(node.body, env);
         if (result instanceof BreakSignal) {
           break;
@@ -1161,6 +1197,9 @@ export class Interpreter {
     const metadata = func.__metadata || func;
     const funcEnv = new Environment(metadata.closure);
 
+    // Get function name for call stack tracking
+    const funcName = metadata.name || func.name || 'anonymous';
+
     // Bind 'this' if provided (for method calls)
     if (thisContext !== undefined) {
       funcEnv.define('this', thisContext);
@@ -1196,18 +1235,54 @@ export class Interpreter {
     // Execute function body
     // If async, use async evaluation and return a promise
     if (metadata.async) {
+      // Track call stack for async functions
+      if (this.executionController) {
+        this.executionController._pushCall(funcName);
+      }
       return (async () => {
+        try {
+          if (metadata.expression) {
+            // Arrow function with expression body
+            const result = await this.evaluateAsync(metadata.body, funcEnv);
+            // If the result is a ThrowSignal, throw the error
+            if (result instanceof ThrowSignal) {
+              throw result.value;
+            }
+            return result;
+          } else {
+            // Block statement body
+            const result = await this.evaluateAsync(metadata.body, funcEnv);
+            if (result instanceof ReturnValue) {
+              return result.value;
+            }
+            // If the result is a ThrowSignal, throw the error
+            if (result instanceof ThrowSignal) {
+              throw result.value;
+            }
+            return undefined;
+          }
+        } finally {
+          if (this.executionController) {
+            this.executionController._popCall();
+          }
+        }
+      })();
+    } else {
+      // Synchronous evaluation for non-async functions
+      // Track call stack for sync functions
+      if (this.executionController) {
+        this.executionController._pushCall(funcName);
+      }
+      try {
         if (metadata.expression) {
-          // Arrow function with expression body
-          const result = await this.evaluateAsync(metadata.body, funcEnv);
+          const result = this.evaluate(metadata.body, funcEnv);
           // If the result is a ThrowSignal, throw the error
           if (result instanceof ThrowSignal) {
             throw result.value;
           }
           return result;
         } else {
-          // Block statement body
-          const result = await this.evaluateAsync(metadata.body, funcEnv);
+          const result = this.evaluate(metadata.body, funcEnv);
           if (result instanceof ReturnValue) {
             return result.value;
           }
@@ -1217,26 +1292,10 @@ export class Interpreter {
           }
           return undefined;
         }
-      })();
-    } else {
-      // Synchronous evaluation for non-async functions
-      if (metadata.expression) {
-        const result = this.evaluate(metadata.body, funcEnv);
-        // If the result is a ThrowSignal, throw the error
-        if (result instanceof ThrowSignal) {
-          throw result.value;
+      } finally {
+        if (this.executionController) {
+          this.executionController._popCall();
         }
-        return result;
-      } else {
-        const result = this.evaluate(metadata.body, funcEnv);
-        if (result instanceof ReturnValue) {
-          return result.value;
-        }
-        // If the result is a ThrowSignal, throw the error
-        if (result instanceof ThrowSignal) {
-          throw result.value;
-        }
-        return undefined;
       }
     }
   }

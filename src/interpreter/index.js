@@ -101,7 +101,8 @@ export class WangInterpreter {
 
     // Prepare execution options
     const options = {
-      moduleResolver: this.moduleResolver
+      moduleResolver: this.moduleResolver,
+      executionController: userOptions.executionController
       // sourceType will be auto-detected from code
     };
 

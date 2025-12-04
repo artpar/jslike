@@ -98,34 +98,59 @@ function containsTopLevelAwait(node) {
 }
 
 export async function execute(code, env = null, options = {}) {
-  // Parse the code
-  const ast = parse(code, options);
+  // Get execution controller if provided
+  const controller = options.executionController;
 
-  // Create global environment if not provided
-  if (!env) {
-    env = createGlobalEnvironment(new Environment());
+  // Mark execution as starting
+  if (controller) {
+    controller._start();
   }
 
-  // Create interpreter with module resolver and abort signal if provided
-  const interpreter = new Interpreter(env, {
-    moduleResolver: options.moduleResolver,
-    abortSignal: options.abortSignal
-  });
+  try {
+    // Parse the code
+    const ast = parse(code, options);
 
-  // Use async evaluation if:
-  // 1. Explicitly requested module mode
-  // 2. AST contains import/export declarations
-  // 3. Code contains top-level await
-  const needsAsync = options.sourceType === 'module' ||
-                     containsModuleDeclarations(ast) ||
-                     containsTopLevelAwait(ast);
+    // Create global environment if not provided
+    if (!env) {
+      env = createGlobalEnvironment(new Environment());
+    }
 
-  if (needsAsync) {
-    const result = await interpreter.evaluateAsync(ast, env);
-    return result instanceof ReturnValue ? result.value : result;
-  } else {
-    const result = interpreter.evaluate(ast, env);
-    return result instanceof ReturnValue ? result.value : result;
+    // Create interpreter with module resolver, abort signal, and execution controller
+    const interpreter = new Interpreter(env, {
+      moduleResolver: options.moduleResolver,
+      abortSignal: options.abortSignal,
+      executionController: controller
+    });
+
+    // Use async evaluation if:
+    // 1. Explicitly requested module mode
+    // 2. AST contains import/export declarations
+    // 3. Code contains top-level await
+    // 4. Execution controller provided (needs async for pause/resume)
+    const needsAsync = options.sourceType === 'module' ||
+                       containsModuleDeclarations(ast) ||
+                       containsTopLevelAwait(ast) ||
+                       controller != null;
+
+    if (needsAsync) {
+      const result = await interpreter.evaluateAsync(ast, env);
+      if (controller) {
+        controller._complete();
+      }
+      return result instanceof ReturnValue ? result.value : result;
+    } else {
+      const result = interpreter.evaluate(ast, env);
+      if (controller) {
+        controller._complete();
+      }
+      return result instanceof ReturnValue ? result.value : result;
+    }
+  } catch (e) {
+    // Mark as aborted if that's the error type
+    if (controller && e.name === 'AbortError') {
+      controller.state = 'aborted';
+    }
+    throw e;
   }
 }
 
@@ -139,6 +164,7 @@ export const isTopLevelAwait = containsModuleSyntax;
 export { Interpreter } from './interpreter/interpreter.js';
 export { Environment } from './runtime/environment.js';
 export { WangInterpreter, InMemoryModuleResolver } from './interpreter/index.js';
+export { ExecutionController } from './runtime/execution-controller.js';
 
 /**
  * Abstract base class for module resolution
