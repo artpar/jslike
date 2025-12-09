@@ -1671,29 +1671,36 @@ export class Interpreter {
         throw new Error(`Cannot find module '${modulePath}'`);
       }
 
-      // Handle both old (string) and new (ModuleResolution) formats
-      const moduleCode = typeof resolution === 'string' ? resolution : resolution.code;
+      // Handle native module exports (for libraries like React)
+      // If resolution has 'exports' property, use it directly without parsing
+      if (resolution.exports) {
+        moduleExports = resolution.exports;
+        this.moduleCache.set(modulePath, moduleExports);
+      } else {
+        // Handle both old (string) and new (ModuleResolution) formats
+        const moduleCode = typeof resolution === 'string' ? resolution : resolution.code;
 
-      // Parse and execute module in its own environment
-      const moduleAst = acornParse(moduleCode, {
-        ecmaVersion: 2020,
-        sourceType: 'module',
-        locations: false
-      });
-      const moduleEnv = new Environment(this.globalEnv);
+        // Parse and execute module in its own environment
+        const moduleAst = acornParse(moduleCode, {
+          ecmaVersion: 2020,
+          sourceType: 'module',
+          locations: false
+        });
+        const moduleEnv = new Environment(this.globalEnv);
 
-      // Create a new interpreter for the module with shared module cache
-      const moduleInterpreter = new Interpreter(this.globalEnv, {
-        moduleResolver: this.moduleResolver
-      });
-      moduleInterpreter.moduleCache = this.moduleCache;  // Share cache
+        // Create a new interpreter for the module with shared module cache
+        const moduleInterpreter = new Interpreter(this.globalEnv, {
+          moduleResolver: this.moduleResolver
+        });
+        moduleInterpreter.moduleCache = this.moduleCache;  // Share cache
 
-      // Execute module and collect exports
-      await moduleInterpreter.evaluateAsync(moduleAst, moduleEnv);
+        // Execute module and collect exports
+        await moduleInterpreter.evaluateAsync(moduleAst, moduleEnv);
 
-      // Cache the module exports
-      moduleExports = moduleInterpreter.moduleExports;
-      this.moduleCache.set(modulePath, moduleExports);
+        // Cache the module exports
+        moduleExports = moduleInterpreter.moduleExports;
+        this.moduleCache.set(modulePath, moduleExports);
+      }
     }
 
     // Import specified bindings into current environment
