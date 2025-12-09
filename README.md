@@ -1,77 +1,246 @@
 # JSLike
 
-**Production-ready JavaScript interpreter** with full ES6+ support using Acorn parser. JSLike executes real JavaScript code with a custom runtime environment, supporting modern ES6+ features including classes, destructuring, template literals, and more.
+**Production-ready JavaScript interpreter** with full ES6+ support, native JSX parsing, and React integration. JSLike executes real JavaScript code with a custom runtime environment, supporting modern ES6+ features including classes, destructuring, template literals, JSX, and more.
 
 ## Features
 
-- **✅ Production-Ready** - Handles files of any size, tested on 100+ line programs
+- **Production-Ready** - Handles files of any size, tested with 1000+ tests
 - **Full ES6+ JavaScript Support** - Classes, destructuring, template literals, spread operator, arrow functions
+- **Native JSX Support** - Parse and execute JSX without pre-transformation
+- **React Integration** - Import React hooks and components via moduleResolver
+- **CSP-Safe** - Tree-walking interpreter, no eval() or new Function()
 - **ASI (Automatic Semicolon Insertion)** - Write JavaScript naturally without mandatory semicolons
 - **Acorn Parser** - Battle-tested parser used by webpack, ESLint, and major tools
-- **Custom Interpreter** - ~2000 LOC tree-walking interpreter with proper scoping
-- **Zero Runtime Dependencies** - Only requires Node.js to run
-- **REPL** - Interactive development environment
-- **CLI** - Run `.js` files directly
+- **Zero Runtime Dependencies** - Parser bundled, no npm install needed after build
+- **REPL & CLI** - Interactive development and direct file execution
 
 ## Installation
 
 ```bash
-# For development (includes acorn for building)
+npm install jslike
+```
+
+Or for development:
+
+```bash
+git clone https://github.com/artpar/jslike.git
+cd jslike
 npm install
 npm run build
-
-# For end users - zero runtime dependencies!
-# Just copy the src/ and bin/ directories and run:
-node bin/jslike.js examples/hello.js
 ```
 
-### For End Users
+## Quick Start
 
-The built project has **zero runtime dependencies**! The Acorn parser (~225KB) is bundled into `src/parser.js`.
+### Programmatic Usage
+
+```javascript
+import { execute, createEnvironment } from 'jslike';
+
+// Simple execution
+const result = await execute(`
+  const greeting = "Hello";
+  const name = "World";
+  greeting + ", " + name + "!"
+`);
+console.log(result); // "Hello, World!"
+```
+
+### JSX Support
+
+```javascript
+import { execute } from 'jslike';
+
+const element = await execute(`
+  function Button({ label, onClick }) {
+    return <button className="btn" onClick={onClick}>{label}</button>;
+  }
+
+  <div className="container">
+    <h1>Welcome</h1>
+    <Button label="Click me" onClick={() => console.log('clicked')} />
+  </div>
+`);
+
+// element is a React-compatible element object:
+// { $$typeof: Symbol(react.element), type: 'div', props: {...}, ... }
+```
+
+### React Integration
+
+```javascript
+import { execute, createEnvironment } from 'jslike';
+import * as React from 'react';
+
+// Create module resolver for React imports
+const moduleResolver = {
+  async resolve(modulePath) {
+    if (modulePath === 'react') {
+      return { exports: React };  // Return native module exports
+    }
+    return null;
+  }
+};
+
+// Create environment with React for JSX
+const env = createEnvironment();
+env.define('React', React);
+
+// Execute with React hooks
+const component = await execute(`
+  import { useState, useEffect } from 'react';
+
+  function Counter() {
+    const [count, setCount] = useState(0);
+
+    useEffect(() => {
+      document.title = \`Count: \${count}\`;
+    }, [count]);
+
+    return (
+      <div>
+        <p>Count: {count}</p>
+        <button onClick={() => setCount(count + 1)}>+</button>
+      </div>
+    );
+  }
+
+  <Counter />
+`, env, { moduleResolver });
+```
+
+### CLI Usage
 
 ```bash
-# No npm install needed after build!
-node bin/jslike.js myfile.js
+# Run a file
+npx jslike myfile.js
+
+# Interactive REPL
+npx jslike --repl
 ```
 
-Or install globally:
-```bash
-npm install -g jslike
-jslike myfile.js
+## Module System
+
+JSLike supports ES6 imports with a flexible module resolver:
+
+### Native Module Exports (React, lodash, etc.)
+
+```javascript
+const moduleResolver = {
+  async resolve(modulePath) {
+    // Return native JavaScript objects directly
+    if (modulePath === 'react') {
+      return { exports: React };
+    }
+    if (modulePath === 'lodash') {
+      return { exports: _ };
+    }
+    return null;
+  }
+};
 ```
 
-## Usage
+### Code Modules (parsed and executed)
 
-### Running a file
-
-```bash
-npm start examples/hello.js
-# or
-./bin/jslike.js examples/hello.js
+```javascript
+const moduleResolver = {
+  async resolve(modulePath) {
+    if (modulePath === './utils') {
+      return {
+        code: `
+          export function double(x) { return x * 2; }
+          export const PI = 3.14159;
+        `
+      };
+    }
+    return null;
+  }
+};
 ```
 
-### Interactive REPL
+### Import Styles Supported
 
-```bash
-npm run repl
-# or
-./bin/repl.js
+```javascript
+import { useState, useEffect } from 'react';     // Named imports
+import React from 'react';                        // Default import
+import * as Utils from './utils';                 // Namespace import
 ```
 
-### Example REPL session
+## JSX Features
 
+### Basic Elements
+
+```javascript
+<div className="container">Hello World</div>
+<input type="text" disabled />
+<br />
 ```
-JSLike REPL v1.0.0
-Type JavaScript-like code and press Enter to execute
-Press Ctrl+C or Ctrl+D to exit
 
-> const x = 10;
-> const y = 20;
-> x + y
-30
-> function greet(name) { return "Hello, " + name; }
-> greet("World")
-Hello, World
+### Expressions
+
+```javascript
+const name = "World";
+<div>Hello {name}</div>
+<div>{1 + 2 + 3}</div>
+<div>{items.map(item => <span key={item.id}>{item.name}</span>)}</div>
+```
+
+### Attributes
+
+```javascript
+// String attributes
+<div className="container" id="main">
+
+// Expression attributes
+<div className={isActive ? 'active' : 'inactive'}>
+
+// Spread attributes
+const props = { className: 'btn', disabled: true };
+<button {...props}>Click</button>
+
+// Boolean attributes
+<input disabled />  // Same as disabled={true}
+```
+
+### Fragments
+
+```javascript
+<>
+  <div>First</div>
+  <div>Second</div>
+</>
+```
+
+### Components
+
+```javascript
+// Function components
+function Card({ title, children }) {
+  return (
+    <div className="card">
+      <h2>{title}</h2>
+      <div className="card-body">{children}</div>
+    </div>
+  );
+}
+
+// Usage - components are stored as type (React behavior)
+<Card title="Welcome">
+  <p>Card content here</p>
+</Card>
+
+// To render, call component manually or use React renderer
+Card({ title: "Welcome", children: <p>Content</p> })
+```
+
+### Member Expression Components
+
+```javascript
+const UI = {
+  Button: ({ children }) => <button className="ui-btn">{children}</button>,
+  Card: ({ children }) => <div className="ui-card">{children}</div>
+};
+
+<UI.Button>Click me</UI.Button>
 ```
 
 ## Language Features
@@ -94,30 +263,80 @@ function add(a, b) {
 
 // Arrow functions
 const multiply = (x, y) => x * y;
-const greet = (name) => {
-  return "Hello, " + name;
-};
+const greet = name => `Hello, ${name}`;
+
+// Default parameters
+function greet(name = "World") {
+  return `Hello, ${name}`;
+}
+
+// Rest parameters
+function sum(...numbers) {
+  return numbers.reduce((a, b) => a + b, 0);
+}
 ```
 
-### Arrays
+### Classes
 
 ```javascript
-const numbers = [1, 2, 3, 4, 5];
-console.log(numbers[0]); // 1
-numbers[5] = 6;
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+
+  speak() {
+    return `${this.name} makes a sound`;
+  }
+}
+
+class Dog extends Animal {
+  speak() {
+    return `${this.name} barks`;
+  }
+}
+
+const dog = new Dog("Rex");
+dog.speak(); // "Rex barks"
 ```
 
-### Objects
+### Destructuring
 
 ```javascript
-const person = {
-  name: "Bob",
-  age: 30,
-  greet: () => "Hello!"
-};
+// Object destructuring
+const { name, age } = person;
+const { name: userName, age: userAge } = person;
 
-console.log(person.name); // Bob
-console.log(person["age"]); // 30
+// Array destructuring
+const [first, second, ...rest] = array;
+
+// Parameter destructuring
+function greet({ name, age }) {
+  return `${name} is ${age}`;
+}
+```
+
+### Template Literals
+
+```javascript
+const name = "World";
+const greeting = `Hello, ${name}!`;
+const multiline = `
+  Line 1
+  Line 2
+`;
+```
+
+### Async/Await
+
+```javascript
+async function fetchData() {
+  const response = await fetch(url);
+  const data = await response.json();
+  return data;
+}
+
+// Top-level await supported
+const result = await fetchData();
 ```
 
 ### Control Flow
@@ -126,20 +345,26 @@ console.log(person["age"]); // 30
 // If-else
 if (x > 10) {
   console.log("Greater");
+} else if (x === 10) {
+  console.log("Equal");
 } else {
-  console.log("Smaller or equal");
+  console.log("Less");
 }
 
 // Ternary
 const result = x > 5 ? "yes" : "no";
 
+// Nullish coalescing
+const value = input ?? "default";
+
+// Optional chaining
+const name = user?.profile?.name;
+
 // Switch
 switch (day) {
-  case 1:
-    console.log("Monday");
-    break;
-  default:
-    console.log("Other day");
+  case 1: return "Monday";
+  case 2: return "Tuesday";
+  default: return "Other";
 }
 ```
 
@@ -147,53 +372,30 @@ switch (day) {
 
 ```javascript
 // For loop
-for (let i = 0; i < 10; i = i + 1) {
+for (let i = 0; i < 10; i++) {
   console.log(i);
 }
 
-// While loop
-while (condition) {
-  // code
+// For-of
+for (const item of array) {
+  console.log(item);
 }
-
-// Do-while
-do {
-  // code
-} while (condition);
 
 // For-in
-for (let key in object) {
-  console.log(key);
+for (const key in object) {
+  console.log(key, object[key]);
 }
 
-// For-of
-for (let value of array) {
-  console.log(value);
-}
+// While
+while (condition) { /* ... */ }
+
+// Do-while
+do { /* ... */ } while (condition);
 ```
 
-### Error Handling
+## Built-in Objects & Functions
 
-```javascript
-try {
-  throw "Error message";
-} catch (error) {
-  console.log("Caught:", error);
-} finally {
-  console.log("Cleanup");
-}
-```
-
-### Operators
-
-- **Arithmetic**: `+`, `-`, `*`, `/`, `%`, `**`
-- **Comparison**: `<`, `>`, `<=`, `>=`, `==`, `!=`, `===`, `!==`
-- **Logical**: `&&`, `||`, `!`, `??` (nullish coalescing)
-- **Bitwise**: `&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`
-- **Assignment**: `=`, `+=`, `-=`, `*=`, `/=`, `%=`
-- **Update**: `++`, `--`
-
-### Built-in Objects
+### Standard JavaScript
 
 - `console.log()`, `console.error()`, `console.warn()`
 - `Math.PI`, `Math.sqrt()`, `Math.random()`, etc.
@@ -201,148 +403,174 @@ try {
 - `Map`, `Set`, `WeakMap`, `WeakSet`
 - `RegExp`, `Symbol`
 - `JSON.parse()`, `JSON.stringify()`
+- `Promise`, `Date`, `Error`
 - `setTimeout()`, `setInterval()`
 - `parseInt()`, `parseFloat()`, `isNaN()`, `isFinite()`
-- `Promise`, `Date`, `Error`
 
-## Examples
+### JSX Runtime
 
-See the `examples/` directory for more code samples:
+- `createElement(type, props, ...children)` - Creates React-compatible elements
+- `Fragment` - Symbol for React fragments
 
-- `hello.js` - Basic hello world
-- `functions.js` - Function examples including closures
-- `loops.js` - All loop types
-- `arrays-objects.js` - Arrays and objects
-- `algorithms.js` - Factorial, Fibonacci, prime numbers
-- `control-flow.js` - If-else, switch, try-catch
-- `comprehensive.js` - Complete feature demonstration
+### Wang Standard Library
 
-## Development
+Utility functions available globally:
 
-### Build Process
+```javascript
+// Array operations
+sort_by(array, key)      // Sort by key or function
+group_by(array, key)     // Group into object by key
+unique(array)            // Remove duplicates
+chunk(array, size)       // Split into chunks
+flatten(array, depth)    // Flatten nested arrays
+first(array, n)          // Get first n items
+last(array, n)           // Get last n items
+range(start, end, step)  // Generate number sequence
 
-The build process bundles the Acorn parser into `src/parser.js`:
+// Object operations
+keys(obj)                // Object.keys
+values(obj)              // Object.values
+entries(obj)             // Object.entries
+pick(obj, keys)          // Pick specific keys
+omit(obj, keys)          // Omit specific keys
+merge(...objects)        // Merge objects
+get(obj, path, default)  // Deep get with dot notation
+clone(obj)               // Deep clone
 
-```bash
-# Bundle Acorn parser (creates self-contained parser.js)
-npm run build
+// String operations
+split(str, sep)          // Split string
+join(arr, sep)           // Join array
+trim(str)                // Trim whitespace
+upper(str)               // Uppercase
+lower(str)               // Lowercase
+capitalize(str)          // Capitalize first letter
+truncate(str, len)       // Truncate with ellipsis
+
+// Type checking
+is_string(val)           // Check if string
+is_number(val)           // Check if number
+is_array(val)            // Check if array
+is_object(val)           // Check if object
+is_function(val)         // Check if function
+is_empty(val)            // Check if empty
+
+// Math operations
+sum(array)               // Sum of numbers
+avg(array)               // Average
+min(array)               // Minimum
+max(array)               // Maximum
+clamp(num, min, max)     // Clamp to range
+round(num, decimals)     // Round to decimals
 ```
 
-This creates `src/parser.js` (~225KB) which includes:
-- Complete Acorn parser
-- No external dependencies at runtime
-- ES6 module format
+## API Reference
 
-### Debug mode
+### execute(code, env?, options?)
 
-```bash
-DEBUG=1 ./bin/jslike.js examples/hello.js
+Execute JavaScript code and return the result.
+
+```javascript
+const result = await execute(code, env, {
+  moduleResolver,        // For import statements
+  executionController,   // For pause/resume/abort
+  abortSignal            // For cancellation
+});
 ```
 
-### Architecture
+### createEnvironment()
 
-```
-src/
-├── parser.js          - Bundled Acorn parser (~225KB, self-contained)
-├── index.js           - Main API (parse/execute functions)
-├── interpreter/
-│   └── interpreter.js - Tree-walking interpreter (~2000 LOC)
-├── runtime/
-│   ├── environment.js - Lexical scoping and closures
-│   └── builtins.js    - Built-in objects (console, Math, JSON, etc.)
-└── ast/
-    └── nodes.js       - AST node constructors (ESTree format)
+Create a new execution environment with built-ins.
+
+```javascript
+const env = createEnvironment();
+env.define('myVar', 42);
+env.define('myFunc', (x) => x * 2);
 ```
 
-## How It Works
+### ModuleResolver
 
-1. **Parsing**: Acorn parser processes JavaScript code and builds an ESTree-compatible AST
-2. **Evaluation**: The interpreter walks the AST and executes each node
-3. **Runtime**: Environment manages variable scopes (lexical scoping with closures)
-4. **Built-ins**: Native JavaScript objects (console, Math, JSON, etc.) integrated into runtime
+Interface for resolving imports:
 
-## Current Status
+```javascript
+const moduleResolver = {
+  async resolve(modulePath, fromPath) {
+    // Return { exports: object } for native modules
+    // Return { code: string } for code modules
+    // Return null if not found
+  },
+  async exists(modulePath, fromPath) {
+    // Return boolean
+  },
+  async list(prefix) {
+    // Return string[] of module paths
+  }
+};
+```
 
-### ✅ Production-Ready & Fully Implemented
+### ExecutionController
 
-**ES6+ Language Features**:
-- ✅ Variables (var, let, const)
-- ✅ Functions (declarations, expressions, arrow functions)
-- ✅ **Classes** with constructors, methods, and inheritance
-- ✅ **Destructuring** (objects and arrays)
-- ✅ **Template literals** with interpolation
-- ✅ **Spread operator** for arrays and objects
-- ✅ Rest parameters `(...rest)`
-- ✅ Object/array shorthand syntax
-- ✅ Method shorthand in objects
-- ✅ **ASI (Automatic Semicolon Insertion)** - semicolons optional!
-- ✅ All operators (arithmetic, logical, bitwise, comparison)
-- ✅ Control flow (if/else, switch, try/catch)
-- ✅ Loops (for, while, do-while, for-in, for-of)
-- ✅ Closures and higher-order functions
-- ✅ Proper `this` binding in classes and methods
-- ✅ Comments (single-line //, multi-line /* */)
-- ✅ **Async/await** with Promises
-- ✅ **Regular expressions** (literals and RegExp constructor)
-- ✅ Enhanced error messages with suggestions
+Control execution flow:
 
-**Infrastructure**:
-- ✅ Acorn parser - production-grade ES2020 support
-- ✅ Tree-walking interpreter (~2000 LOC)
-- ✅ Runtime environment with proper lexical scoping
-- ✅ Built-in objects (console, Math, JSON, Array, Object, etc.)
-- ✅ CLI for running .js files
-- ✅ Interactive REPL
-- ✅ Handles files of **any size** (tested on 100+ line programs)
-- ✅ **No file size limitations** - O(n) parsing performance
+```javascript
+import { execute, ExecutionController } from 'jslike';
 
-### Performance
+const controller = new ExecutionController();
 
-- ✅ **Fast parsing**: O(n) linear time complexity
-- ✅ **Handles large files**: No OOM errors, no timeouts
-- ✅ **Production-tested parser**: Acorn is used by webpack, ESLint, Rollup
-- ✅ Tested on complex programs with 100+ lines
+// Start execution
+const promise = execute(code, null, { executionController: controller });
 
-### Not Yet Implemented
+// Control execution
+controller.pause();
+controller.resume();
+controller.abort();
 
-- Generators (function* and yield)
-- Proxies and Reflect API
-- Module system (import/export between files)
+// Check state
+console.log(controller.state); // 'running' | 'paused' | 'completed' | 'aborted'
+```
 
 ## Testing
 
-All programs work, including complex multi-file applications:
-
 ```bash
-# Run test suite
-npm test
-
-# Test simple programs
-node bin/jslike.js examples/hello.js
-node bin/jslike.js examples/functions.js
-
-# Test ES6 features
-node bin/jslike.js examples/es6-test.js
-node bin/jslike.js examples/class-simple.js
-
-# Test complex algorithms (100+ lines)
-node bin/jslike.js examples/algorithms.js
+npm test                    # Run all tests
+npm test -- tests/jsx.test.js  # Run specific test file
 ```
 
-**All 698 tests pass**, covering:
-- Variables (const, let, var)
-- Function declarations and arrow functions
-- Object and array literals
-- Destructuring (objects, arrays, parameters)
-- Control flow and loops
-- Closures and higher-order functions
-- Classes, inheritance, and constructors
-- Template literals
-- Async/await and Promises
-- Regular expressions
-- Native method calls
-- Error handling and edge cases
+**1009 tests** covering:
+- ES6+ language features
+- JSX parsing and execution
+- React integration
+- Module imports
+- Error handling
+- Edge cases
+
+## Architecture
+
+```
+src/
+├── parser.js              - Bundled Acorn + acorn-jsx (~245KB)
+├── index.js               - Main API (parse/execute)
+├── interpreter/
+│   └── interpreter.js     - Tree-walking interpreter (~2500 LOC)
+├── runtime/
+│   ├── environment.js     - Lexical scoping and closures
+│   ├── builtins.js        - Built-in objects and JSX runtime
+│   └── execution-controller.js - Pause/resume/abort
+└── ast/
+    └── nodes.js           - AST node types
+```
+
+## Known Limitations
+
+- Generator functions (`function*`, `yield`) not supported
+- Tagged template literals not fully supported
+- Class getters/setters not fully supported
+- Proxies and Reflect API not implemented
 
 ## License
 
 MIT
+
+## Links
+
+- [npm package](https://www.npmjs.com/package/jslike)
+- [GitHub repository](https://github.com/artpar/jslike)
