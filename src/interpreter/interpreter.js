@@ -636,6 +636,26 @@ export class Interpreter {
       return this.evaluateClassExpression(node, env);
     }
 
+    // JSX Support (async)
+    if (node.type === 'JSXElement') {
+      return await this.evaluateJSXElementAsync(node, env);
+    }
+
+    if (node.type === 'JSXFragment') {
+      return await this.evaluateJSXFragmentAsync(node, env);
+    }
+
+    if (node.type === 'JSXExpressionContainer') {
+      if (node.expression.type === 'JSXEmptyExpression') {
+        return undefined;
+      }
+      return await this.evaluateAsync(node.expression, env);
+    }
+
+    if (node.type === 'JSXText') {
+      return this.normalizeJSXText(node.value);
+    }
+
     // Only leaf nodes should fall through to sync evaluate
     // These have no sub-expressions that could contain await
     if (['Literal', 'Identifier', 'BreakStatement', 'ContinueStatement',
@@ -809,6 +829,22 @@ export class Interpreter {
 
       case 'Property':
         return this.evaluateProperty(node, env);
+
+      // JSX Support
+      case 'JSXElement':
+        return this.evaluateJSXElement(node, env);
+
+      case 'JSXFragment':
+        return this.evaluateJSXFragment(node, env);
+
+      case 'JSXExpressionContainer':
+        if (node.expression.type === 'JSXEmptyExpression') {
+          return undefined;
+        }
+        return this.evaluate(node.expression, env);
+
+      case 'JSXText':
+        return this.normalizeJSXText(node.value);
 
       default:
         throw new Error(`Unknown node type: ${node.type}`);
@@ -2233,5 +2269,254 @@ export class Interpreter {
   evaluateProperty(node, env) {
     // Already handled in evaluateObjectExpression
     return undefined;
+  }
+
+  // ===== JSX Support =====
+
+  evaluateJSXElement(node, env) {
+    const createElement = this.getCreateElement(env);
+    const { type, props } = this.evaluateJSXOpeningElement(node.openingElement, env);
+    const children = this.evaluateJSXChildren(node.children, env);
+
+    if (children.length === 0) {
+      return createElement(type, props);
+    } else if (children.length === 1) {
+      return createElement(type, props, children[0]);
+    }
+    return createElement(type, props, ...children);
+  }
+
+  evaluateJSXFragment(node, env) {
+    const createElement = this.getCreateElement(env);
+    const Fragment = this.getFragment(env);
+    const children = this.evaluateJSXChildren(node.children, env);
+
+    if (children.length === 0) {
+      return createElement(Fragment, null);
+    } else if (children.length === 1) {
+      return createElement(Fragment, null, children[0]);
+    }
+    return createElement(Fragment, null, ...children);
+  }
+
+  evaluateJSXOpeningElement(node, env) {
+    const type = this.evaluateJSXElementName(node.name, env);
+    const props = {};
+
+    for (const attr of node.attributes) {
+      if (attr.type === 'JSXAttribute') {
+        const name = attr.name.type === 'JSXIdentifier'
+          ? attr.name.name
+          : `${attr.name.namespace.name}:${attr.name.name.name}`;
+        const value = attr.value
+          ? this.evaluateJSXAttributeValue(attr.value, env)
+          : true;
+        props[name] = value;
+      } else if (attr.type === 'JSXSpreadAttribute') {
+        Object.assign(props, this.evaluate(attr.argument, env));
+      }
+    }
+
+    return { type, props: Object.keys(props).length > 0 ? props : null };
+  }
+
+  evaluateJSXElementName(node, env) {
+    if (node.type === 'JSXIdentifier') {
+      const name = node.name;
+      // Lowercase = intrinsic ('div'), Uppercase = component
+      if (name[0] === name[0].toLowerCase()) {
+        return name;
+      }
+      return env.get(name);
+    } else if (node.type === 'JSXMemberExpression') {
+      const object = this.evaluateJSXElementName(node.object, env);
+      return object[node.property.name];
+    } else if (node.type === 'JSXNamespacedName') {
+      return `${node.namespace.name}:${node.name.name}`;
+    }
+    throw new Error(`Unknown JSX element name type: ${node.type}`);
+  }
+
+  evaluateJSXAttributeValue(node, env) {
+    if (node.type === 'Literal') return node.value;
+    if (node.type === 'JSXExpressionContainer') {
+      return this.evaluate(node.expression, env);
+    }
+    if (node.type === 'JSXElement') return this.evaluateJSXElement(node, env);
+    if (node.type === 'JSXFragment') return this.evaluateJSXFragment(node, env);
+    throw new Error(`Unknown JSX attribute value type: ${node.type}`);
+  }
+
+  evaluateJSXChildren(children, env) {
+    const result = [];
+    for (const child of children) {
+      if (child.type === 'JSXText') {
+        const text = this.normalizeJSXText(child.value);
+        if (text) result.push(text);
+      } else if (child.type === 'JSXExpressionContainer') {
+        if (child.expression.type !== 'JSXEmptyExpression') {
+          const value = this.evaluate(child.expression, env);
+          if (Array.isArray(value)) {
+            result.push(...value);
+          } else if (value !== null && value !== undefined && value !== false) {
+            result.push(value);
+          }
+        }
+      } else if (child.type === 'JSXElement') {
+        result.push(this.evaluateJSXElement(child, env));
+      } else if (child.type === 'JSXFragment') {
+        result.push(this.evaluateJSXFragment(child, env));
+      }
+    }
+    return result;
+  }
+
+  normalizeJSXText(text) {
+    // React's JSX whitespace normalization
+    const lines = text.split('\n');
+    const normalized = lines
+      .map((line, i) => {
+        let result = line;
+        if (i === 0) result = result.trimStart();
+        if (i === lines.length - 1) result = result.trimEnd();
+        return result;
+      })
+      .filter(line => line.length > 0)
+      .join(' ');
+    return normalized || null;
+  }
+
+  getCreateElement(env) {
+    // Try React.createElement first
+    try {
+      const React = env.get('React');
+      if (React && React.createElement) {
+        return React.createElement.bind(React);
+      }
+    } catch (e) { /* not defined */ }
+
+    // Try standalone createElement
+    try {
+      return env.get('createElement');
+    } catch (e) { /* not defined */ }
+
+    // Fallback: simple element factory for non-React usage
+    return (type, props, ...children) => ({
+      $$typeof: Symbol.for('react.element'),
+      type,
+      props: {
+        ...props,
+        children: children.length === 0 ? undefined : children.length === 1 ? children[0] : children
+      },
+      key: props?.key ?? null,
+      ref: props?.ref ?? null
+    });
+  }
+
+  getFragment(env) {
+    // Try React.Fragment
+    try {
+      const React = env.get('React');
+      if (React && React.Fragment) {
+        return React.Fragment;
+      }
+    } catch (e) { /* not defined */ }
+
+    // Try standalone Fragment
+    try {
+      return env.get('Fragment');
+    } catch (e) { /* not defined */ }
+
+    // Fallback: Symbol for fragments
+    return Symbol.for('react.fragment');
+  }
+
+  // ===== Async JSX Support =====
+
+  async evaluateJSXElementAsync(node, env) {
+    const checkpointPromise = this._getCheckpointPromise(node, env);
+    if (checkpointPromise) await checkpointPromise;
+
+    const createElement = this.getCreateElement(env);
+    const { type, props } = await this.evaluateJSXOpeningElementAsync(node.openingElement, env);
+    const children = await this.evaluateJSXChildrenAsync(node.children, env);
+
+    if (children.length === 0) {
+      return createElement(type, props);
+    } else if (children.length === 1) {
+      return createElement(type, props, children[0]);
+    }
+    return createElement(type, props, ...children);
+  }
+
+  async evaluateJSXFragmentAsync(node, env) {
+    const checkpointPromise = this._getCheckpointPromise(node, env);
+    if (checkpointPromise) await checkpointPromise;
+
+    const createElement = this.getCreateElement(env);
+    const Fragment = this.getFragment(env);
+    const children = await this.evaluateJSXChildrenAsync(node.children, env);
+
+    if (children.length === 0) {
+      return createElement(Fragment, null);
+    } else if (children.length === 1) {
+      return createElement(Fragment, null, children[0]);
+    }
+    return createElement(Fragment, null, ...children);
+  }
+
+  async evaluateJSXOpeningElementAsync(node, env) {
+    const type = this.evaluateJSXElementName(node.name, env);
+    const props = {};
+
+    for (const attr of node.attributes) {
+      if (attr.type === 'JSXAttribute') {
+        const name = attr.name.type === 'JSXIdentifier'
+          ? attr.name.name
+          : `${attr.name.namespace.name}:${attr.name.name.name}`;
+        const value = attr.value
+          ? await this.evaluateJSXAttributeValueAsync(attr.value, env)
+          : true;
+        props[name] = value;
+      } else if (attr.type === 'JSXSpreadAttribute') {
+        Object.assign(props, await this.evaluateAsync(attr.argument, env));
+      }
+    }
+
+    return { type, props: Object.keys(props).length > 0 ? props : null };
+  }
+
+  async evaluateJSXAttributeValueAsync(node, env) {
+    if (node.type === 'Literal') return node.value;
+    if (node.type === 'JSXExpressionContainer') {
+      return await this.evaluateAsync(node.expression, env);
+    }
+    if (node.type === 'JSXElement') return await this.evaluateJSXElementAsync(node, env);
+    if (node.type === 'JSXFragment') return await this.evaluateJSXFragmentAsync(node, env);
+    throw new Error(`Unknown JSX attribute value type: ${node.type}`);
+  }
+
+  async evaluateJSXChildrenAsync(children, env) {
+    const result = [];
+    for (const child of children) {
+      if (child.type === 'JSXText') {
+        const text = this.normalizeJSXText(child.value);
+        if (text) result.push(text);
+      } else if (child.type === 'JSXExpressionContainer') {
+        if (child.expression.type !== 'JSXEmptyExpression') {
+          const value = await this.evaluateAsync(child.expression, env);
+          if (Array.isArray(value)) {
+            result.push(...value);
+          } else if (value !== null && value !== undefined && value !== false) {
+            result.push(value);
+          }
+        }
+      } else if (child.type === 'JSXElement') {
+        result.push(await this.evaluateJSXElementAsync(child, env));
+      } else if (child.type === 'JSXFragment') {
+        result.push(await this.evaluateJSXFragmentAsync(child, env));
+      }
+    }
+    return result;
   }
 }

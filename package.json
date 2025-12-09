@@ -1,6 +1,6 @@
 {
   "name": "jslike",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -79,7 +79,9 @@
     "interpreter",
     "parser",
     "acorn",
-    "es6"
+    "es6",
+    "jsx",
+    "react"
   ],
   "author": "Parth Mudgal <artpar@gmail.com>",
   "license": "MIT",
@@ -91,6 +93,7 @@
   ],
   "devDependencies": {
     "acorn": "^8.15.0",
+    "acorn-jsx": "^5.3.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.10"

@@ -114,6 +114,20 @@ export function createGlobalEnvironment(env) {
   env.define('SyntaxError', SyntaxError);
   env.define('RangeError', RangeError);
 
+  // JSX Runtime Support
+  env.define('createElement', (type, props, ...children) => ({
+    $$typeof: Symbol.for('react.element'),
+    type,
+    props: {
+      ...props,
+      children: children.length === 0 ? undefined : children.length === 1 ? children[0] : children
+    },
+    key: props?.key ?? null,
+    ref: props?.ref ?? null
+  }));
+
+  env.define('Fragment', Symbol.for('react.fragment'));
+
   // Global console functions (shortcuts for console.log/warn/error)
   env.define('log', (...args) => {
     console.log(...args);
