@@ -133,17 +133,29 @@ export async function execute(code, env = null, options = {}) {
                        controller != null;
 
     if (needsAsync) {
-      const result = await interpreter.evaluateAsync(ast, env);
+      let result = await interpreter.evaluateAsync(ast, env);
       if (controller) {
         controller._complete();
       }
-      return result instanceof ReturnValue ? result.value : result;
+      result = result instanceof ReturnValue ? result.value : result;
+
+      // If result is undefined and code has module declarations, return default export
+      if (result === undefined && interpreter.moduleExports?.default !== undefined) {
+        return interpreter.moduleExports.default;
+      }
+      return result;
     } else {
-      const result = interpreter.evaluate(ast, env);
+      let result = interpreter.evaluate(ast, env);
       if (controller) {
         controller._complete();
       }
-      return result instanceof ReturnValue ? result.value : result;
+      result = result instanceof ReturnValue ? result.value : result;
+
+      // If result is undefined and code has module declarations, return default export
+      if (result === undefined && interpreter.moduleExports?.default !== undefined) {
+        return interpreter.moduleExports.default;
+      }
+      return result;
     }
   } catch (e) {
     // Mark as aborted if that's the error type
