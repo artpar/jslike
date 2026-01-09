@@ -158,10 +158,11 @@ export class Interpreter {
         return undefined;
       }
 
-      const args = [];
+      const rawArgs = [];
       for (const arg of node.arguments) {
-        args.push(await this.evaluateAsync(arg, env));
+        rawArgs.push(await this.evaluateAsync(arg, env));
       }
+      const args = this.flattenSpreadArgs(rawArgs);
 
       if (typeof callee === 'function') {
         if (thisContext !== undefined) {
@@ -654,6 +655,24 @@ export class Interpreter {
 
     if (node.type === 'JSXText') {
       return this.normalizeJSXText(node.value);
+    }
+
+    // For SpreadElement - return spread marker for flattenSpreadArgs
+    if (node.type === 'SpreadElement') {
+      const arg = await this.evaluateAsync(node.argument, env);
+      if (Array.isArray(arg)) {
+        return { __spread: true, __values: arg };
+      }
+      if (typeof arg === 'string') {
+        return { __spread: true, __values: [...arg] };
+      }
+      if (arg !== null && arg !== undefined && typeof arg[Symbol.iterator] === 'function') {
+        return { __spread: true, __values: [...arg] };
+      }
+      if (typeof arg === 'object' && arg !== null) {
+        return { __spread: true, __values: Object.entries(arg) };
+      }
+      throw new TypeError('Spread syntax requires an iterable');
     }
 
     // Only leaf nodes should fall through to sync evaluate
