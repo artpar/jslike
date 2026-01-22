@@ -1308,8 +1308,14 @@ export class Interpreter {
     // Get function name for call stack tracking
     const funcName = metadata.name || func.name || 'anonymous';
 
-    // Bind 'this' if provided (for method calls)
-    if (thisContext !== undefined) {
+    // Bind 'this': for arrow functions use captured this (lexical), for regular functions use call-site this
+    if (metadata.isArrow) {
+      // Arrow functions use lexically captured 'this', ignoring call-site 'this'
+      if (metadata.capturedThis !== undefined) {
+        funcEnv.define('this', metadata.capturedThis);
+      }
+    } else if (thisContext !== undefined) {
+      // Regular functions use 'this' from the call site
       funcEnv.define('this', thisContext);
     }
 
@@ -1490,13 +1496,28 @@ export class Interpreter {
   }
 
   evaluateFunctionExpression(node, env) {
+    const isArrow = node.type === 'ArrowFunctionExpression';
+
+    // For arrow functions, capture 'this' lexically from the enclosing scope
+    let capturedThis;
+    if (isArrow) {
+      try {
+        capturedThis = env.get('this');
+      } catch (e) {
+        // 'this' not defined in enclosing scope, leave undefined
+        capturedThis = undefined;
+      }
+    }
+
     const funcMetadata = {
       __isFunction: true,
       params: node.params,
       body: node.body,
       closure: env,
-      expression: node.type === 'ArrowFunctionExpression' && node.expression,
-      async: node.async || false
+      expression: isArrow && node.expression,
+      async: node.async || false,
+      isArrow: isArrow,
+      capturedThis: isArrow ? capturedThis : undefined
     };
 
     // Wrap in actual JavaScript function so it can be called by native code
