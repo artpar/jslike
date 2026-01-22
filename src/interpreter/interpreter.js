@@ -219,6 +219,56 @@ export class Interpreter {
       return result;
     }
 
+    if (node.type === 'TaggedTemplateExpression') {
+      // 1. Evaluate tag function async (may contain awaits)
+      let thisContext = undefined;
+      let tagFunction;
+
+      if (node.tag.type === 'MemberExpression') {
+        thisContext = await this.evaluateAsync(node.tag.object, env);
+        const prop = node.tag.computed
+          ? await this.evaluateAsync(node.tag.property, env)
+          : node.tag.property.name;
+        tagFunction = thisContext[prop];
+      } else {
+        tagFunction = await this.evaluateAsync(node.tag, env);
+      }
+
+      // 2. Build strings array (synchronous - no awaits in quasis)
+      const strings = [];
+      const rawStrings = [];
+      for (const quasi of node.quasi.quasis) {
+        strings.push(quasi.value.cooked || quasi.value.raw);
+        rawStrings.push(quasi.value.raw);
+      }
+
+      Object.defineProperty(strings, 'raw', {
+        value: Object.freeze(rawStrings),
+        writable: false,
+        enumerable: false,
+        configurable: false
+      });
+      Object.freeze(strings);
+
+      // 3. Evaluate expressions async (may contain awaits)
+      const values = [];
+      for (const expr of node.quasi.expressions) {
+        values.push(await this.evaluateAsync(expr, env));
+      }
+
+      // 4. Call tag function (may be async)
+      if (typeof tagFunction === 'function') {
+        if (thisContext !== undefined) {
+          return await tagFunction.call(thisContext, strings, ...values);
+        }
+        return await tagFunction(strings, ...values);
+      } else if (tagFunction && tagFunction.__isFunction) {
+        return await this.callUserFunction(tagFunction, [strings, ...values], env, thisContext);
+      }
+
+      throw new TypeError('Tag must be a function');
+    }
+
     // For logical expressions with async operands (await support)
     if (node.type === 'LogicalExpression') {
       const left = await this.evaluateAsync(node.left, env);
@@ -821,6 +871,9 @@ export class Interpreter {
       // ES6+ Features
       case 'TemplateLiteral':
         return this.evaluateTemplateLiteral(node, env);
+
+      case 'TaggedTemplateExpression':
+        return this.evaluateTaggedTemplateExpression(node, env);
 
       case 'ClassDeclaration':
         return this.evaluateClassDeclaration(node, env);
@@ -2064,6 +2117,56 @@ export class Interpreter {
       }
     }
     return result;
+  }
+
+  evaluateTaggedTemplateExpression(node, env) {
+    // 1. Evaluate the tag function, preserving 'this' context for member expressions
+    let thisContext = undefined;
+    let tagFunction;
+
+    if (node.tag.type === 'MemberExpression') {
+      // For method calls like obj.tag`...`, set this to obj
+      thisContext = this.evaluate(node.tag.object, env);
+      const prop = node.tag.computed
+        ? this.evaluate(node.tag.property, env)
+        : node.tag.property.name;
+      tagFunction = thisContext[prop];
+    } else {
+      tagFunction = this.evaluate(node.tag, env);
+    }
+
+    // 2. Build the strings array from quasis (cooked values)
+    const strings = [];
+    const rawStrings = [];
+    for (const quasi of node.quasi.quasis) {
+      strings.push(quasi.value.cooked || quasi.value.raw);
+      rawStrings.push(quasi.value.raw);
+    }
+
+    // 3. Add the raw property (frozen per ES6 spec)
+    Object.defineProperty(strings, 'raw', {
+      value: Object.freeze(rawStrings),
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
+    Object.freeze(strings);
+
+    // 4. Evaluate the embedded expressions
+    const values = node.quasi.expressions.map(expr => this.evaluate(expr, env));
+
+    // 5. Call the tag function with proper this context
+    if (typeof tagFunction === 'function') {
+      if (thisContext !== undefined) {
+        return tagFunction.call(thisContext, strings, ...values);
+      }
+      return tagFunction(strings, ...values);
+    } else if (tagFunction && tagFunction.__isFunction) {
+      // User-defined function
+      return this.callUserFunction(tagFunction, [strings, ...values], env, thisContext);
+    }
+
+    throw new TypeError('Tag must be a function');
   }
 
   evaluateClassDeclaration(node, env) {
