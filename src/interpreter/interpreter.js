@@ -141,6 +141,9 @@ export class Interpreter {
 
       if (node.callee.type === 'MemberExpression') {
         thisContext = await this.evaluateAsync(node.callee.object, env);
+        if (node.callee.optional && (thisContext === null || thisContext === undefined)) {
+          return undefined;
+        }
         const prop = node.callee.computed
           ? await this.evaluateAsync(node.callee.property, env)
           : node.callee.property.name;
@@ -1230,6 +1233,9 @@ export class Interpreter {
     if (node.callee.type === 'MemberExpression') {
       // For method calls like obj.method(), set this to obj
       thisContext = this.evaluate(node.callee.object, env);
+      if (node.callee.optional && (thisContext === null || thisContext === undefined)) {
+        return undefined;
+      }
       const prop = node.callee.computed
         ? this.evaluate(node.callee.property, env)
         : node.callee.property.name;
