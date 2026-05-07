@@ -2846,6 +2846,14 @@ export class Interpreter {
     for (const [name, method] of Object.entries(methods)) {
       classConstructor.prototype[name] = function(...args) {
         const result = interpreter.callMethodFunction(method, this, args, env, superClass);
+        if (result && typeof result.then === 'function') {
+          return result.then(resolved => {
+            if (resolved && resolved.__explicitReturn) {
+              return resolved.value;
+            }
+            return resolved;
+          });
+        }
         // Unwrap explicit return marker
         if (result && result.__explicitReturn) {
           return result.value;
@@ -2858,6 +2866,14 @@ export class Interpreter {
     for (const [name, method] of Object.entries(staticMethods)) {
       classConstructor[name] = function(...args) {
         const result = interpreter.callMethodFunction(method, classConstructor, args, env);
+        if (result && typeof result.then === 'function') {
+          return result.then(resolved => {
+            if (resolved && resolved.__explicitReturn) {
+              return resolved.value;
+            }
+            return resolved;
+          });
+        }
         // Unwrap explicit return marker
         if (result && result.__explicitReturn) {
           return result.value;
@@ -2974,7 +2990,8 @@ export class Interpreter {
       __params: funcNode.params,
       __body: funcNode.body,
       __env: env,
-      __className: className
+      __className: className,
+      __async: funcNode.async || false
     };
     return func;
   }
@@ -2991,6 +3008,22 @@ export class Interpreter {
     }
 
     this.bindFunctionParameters(methodFunc.__params, args, funcEnv, thisContext);
+
+    if (methodFunc.__async) {
+      return (async () => {
+        const result = await this.evaluateAsync(methodFunc.__body, funcEnv);
+
+        if (result instanceof ReturnValue) {
+          return { __explicitReturn: true, value: result.value };
+        }
+
+        if (result instanceof ThrowSignal) {
+          throw result.value;
+        }
+
+        return result;
+      })();
+    }
 
     const result = this.evaluate(methodFunc.__body, funcEnv);
 

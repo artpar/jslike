@@ -263,6 +263,52 @@ describe('Async/Await in Control Flow', () => {
     expect(result).toEqual([0, 1, 3, 4]);
   });
 
+  it('awaits native async method calls inside interpreted class methods', async () => {
+    const events = [];
+
+    class Locator {
+      async click() {
+        events.push('click:start');
+        await new Promise(resolve => setTimeout(resolve, 20));
+        events.push('click:end');
+      }
+    }
+
+    interpreter.setVariable('Locator', Locator);
+    interpreter.setVariable('events', events);
+
+    await interpreter.execute(`
+      class BrokenImagesPage {
+        getImages() { return ["ok"]; }
+      }
+
+      class MainPage {
+        constructor() {
+          this.brokenImagesLink = new Locator();
+        }
+
+        async brokenImages() {
+          events.push("method:start");
+          await this.brokenImagesLink.click();
+          events.push("method:after-click");
+          return new BrokenImagesPage();
+        }
+      }
+
+      const mainPage = new MainPage();
+      const page = await mainPage.brokenImages();
+      events.push("after-await:" + (page && typeof page.getImages));
+    `);
+
+    expect(events).toEqual([
+      'method:start',
+      'click:start',
+      'click:end',
+      'method:after-click',
+      'after-await:function'
+    ]);
+  });
+
   it('Await with return in loop', async () => {
     const result = await interpreter.execute(`
       function findValue() {
