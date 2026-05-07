@@ -2666,6 +2666,7 @@ export class Interpreter {
     let constructor = null;
     const methods = {};
     const staticMethods = {};
+    const instanceFields = [];
 
     for (const member of node.body.body) {
       if (member.type === 'MethodDefinition') {
@@ -2679,6 +2680,8 @@ export class Interpreter {
         } else {
           methods[methodName] = methodFunc;
         }
+      } else if (member.type === 'PropertyDefinition' && !member.static && !member.declare && !member.abstract) {
+        instanceFields.push(member);
       }
     }
 
@@ -2686,18 +2689,11 @@ export class Interpreter {
     const classConstructor = function(...args) {
       // Create instance
       const instance = Object.create(classConstructor.prototype);
+      const result = interpreter.constructClassInto(classConstructor, instance, args, env);
 
-      // Call constructor - super() must be called explicitly inside constructor
-      if (constructor) {
-        const result = interpreter.callMethodFunction(constructor, instance, args, env, superClass);
-        // Only use the returned object if it's an explicit return of an object (not the instance)
-        if (result && result.__explicitReturn && result.value && typeof result.value === 'object' && result.value !== instance) {
-          return result.value;
-        }
-      } else if (superClass) {
-        // If no constructor defined but has superClass, implicitly call super()
-        // Call the superClass constructor properly - it's a classConstructor function
-        superClass.call(instance, ...args);
+      // Only use the returned object if it's an explicit return of an object (not the instance)
+      if (result && result.__explicitReturn && result.value && typeof result.value === 'object' && result.value !== instance) {
+        return result.value;
       }
 
       return instance;
@@ -2707,6 +2703,12 @@ export class Interpreter {
     if (constructor) {
       classConstructor.__constructor = constructor;
     }
+
+    classConstructor.__instanceFields = instanceFields;
+    classConstructor.__superClass = superClass;
+    classConstructor.__constructInto = (instance, args) => {
+      return interpreter.constructClassInto(classConstructor, instance, args, env);
+    };
 
     // Set up prototype chain
     if (superClass) {
@@ -2742,6 +2744,69 @@ export class Interpreter {
     return classConstructor;
   }
 
+  constructClassInto(classConstructor, instance, args, env) {
+    const superClass = classConstructor.__superClass;
+    const constructor = classConstructor.__constructor;
+    let fieldsInitialized = false;
+
+    const initializeOwnFields = () => {
+      if (!fieldsInitialized) {
+        this.initializeClassFields(classConstructor, instance, env);
+        fieldsInitialized = true;
+      }
+    };
+
+    if (!superClass) {
+      initializeOwnFields();
+      if (constructor) {
+        return this.callMethodFunction(constructor, instance, args, env, null);
+      }
+      return undefined;
+    }
+
+    if (constructor) {
+      const result = this.callMethodFunction(constructor, instance, args, env, superClass, initializeOwnFields);
+      initializeOwnFields();
+      return result;
+    }
+
+    this.initializeSuperClass(superClass, instance, args);
+    initializeOwnFields();
+    return undefined;
+  }
+
+  initializeSuperClass(superClass, instance, args) {
+    if (superClass.__constructInto) {
+      return superClass.__constructInto(instance, args);
+    }
+
+    // For native constructors like Error, use Reflect.construct and copy instance properties.
+    const tempInstance = Reflect.construct(superClass, args, instance.constructor);
+    Object.getOwnPropertyNames(tempInstance).forEach(name => {
+      instance[name] = tempInstance[name];
+    });
+    return undefined;
+  }
+
+  initializeClassFields(classConstructor, instance, env) {
+    for (const field of classConstructor.__instanceFields || []) {
+      const fieldEnv = new Environment(env);
+      fieldEnv.define('this', instance);
+      const name = this.getClassFieldName(field, fieldEnv);
+      instance[name] = field.value ? this.evaluate(field.value, fieldEnv) : undefined;
+    }
+  }
+
+  getClassFieldName(field, env) {
+    if (field.computed) {
+      return this.evaluate(field.key, env);
+    }
+    if (field.key.type === 'Identifier' || field.key.type === 'PrivateIdentifier') {
+      return field.key.name;
+    }
+    return field.key.value;
+  }
+
   createMethodFunction(funcNode, env, className) {
     const func = {
       __isFunction: true,
@@ -2753,7 +2818,7 @@ export class Interpreter {
     return func;
   }
 
-  callMethodFunction(methodFunc, thisContext, args, env, superClass = null) {
+  callMethodFunction(methodFunc, thisContext, args, env, superClass = null, afterSuper = null) {
     const funcEnv = new Environment(methodFunc.__env || env);
 
     // Bind 'this'
@@ -2763,21 +2828,11 @@ export class Interpreter {
     if (superClass) {
       // Create a super function that calls the parent constructor
       const superFunc = (...superArgs) => {
-        // Call the parent constructor method if it exists
-        if (superClass.__constructor) {
-          this.callMethodFunction(superClass.__constructor, thisContext, superArgs, env, null);
+        const result = this.initializeSuperClass(superClass, thisContext, superArgs);
+        if (afterSuper) {
+          afterSuper();
         }
-        // Otherwise, call superClass as a regular constructor (for native/external classes)
-        else {
-          // For native constructors like Error, we need to use Reflect.construct
-          // to properly initialize the instance properties
-          const tempInstance = Reflect.construct(superClass, superArgs, thisContext.constructor);
-          // Copy properties from the temp instance to our thisContext
-          Object.getOwnPropertyNames(tempInstance).forEach(name => {
-            thisContext[name] = tempInstance[name];
-          });
-        }
-        return undefined;
+        return result && result.__explicitReturn ? result.value : undefined;
       };
       // Store both the function and mark it as super
       superFunc.__isSuperConstructor = true;
