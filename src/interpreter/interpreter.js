@@ -1,13 +1,70 @@
 import { Environment, ReturnValue, BreakSignal, ContinueSignal, ThrowSignal } from '../runtime/environment.js';
-import { parse as acornParse } from '../parser.js';
+import { parse as acornParse, tsParse, tsxParse } from '../parser.js';
 import { createMethodNotFoundError } from '../errors/enhanced-error.js';
+
+function isTypeScriptPath(sourcePath) {
+  return typeof sourcePath === 'string' && /\.(ts|tsx|mts|cts)$/i.test(sourcePath);
+}
+
+function isTSXPath(sourcePath) {
+  return typeof sourcePath === 'string' && /\.tsx$/i.test(sourcePath);
+}
+
+function parseModuleCode(code, sourcePath) {
+  const parser = isTSXPath(sourcePath) ? tsxParse : isTypeScriptPath(sourcePath) ? tsParse : acornParse;
+  return parser(code, {
+    ecmaVersion: isTypeScriptPath(sourcePath) ? 'latest' : 2020,
+    sourceType: 'module',
+    locations: isTypeScriptPath(sourcePath)
+  });
+}
+
+const TYPE_ONLY_DECLARATIONS = new Set([
+  'TSTypeAliasDeclaration',
+  'TSInterfaceDeclaration',
+  'TSDeclareFunction'
+]);
+
+const TYPE_WRAPPER_EXPRESSIONS = new Set([
+  'TSAsExpression',
+  'TSTypeAssertion',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSInstantiationExpression'
+]);
+
+function isTypeOnlyDeclaration(node) {
+  return TYPE_ONLY_DECLARATIONS.has(node?.type) || node?.declare === true;
+}
+
+function isTypeWrapperExpression(node) {
+  return TYPE_WRAPPER_EXPRESSIONS.has(node?.type);
+}
+
+function getTypeWrapperInnerExpression(node) {
+  return node.expression;
+}
+
+function createUnsupportedTypeScriptRuntimeError(node) {
+  return new Error(`Unsupported runtime TypeScript syntax: ${node.type}`);
+}
+
+function getPatternName(pattern) {
+  if (!pattern) return undefined;
+  if (pattern.type === 'Identifier') return pattern.name;
+  if (pattern.type === 'AssignmentPattern') return getPatternName(pattern.left);
+  if (pattern.type === 'TSParameterProperty') return getPatternName(pattern.parameter);
+  return pattern.name;
+}
 
 export class Interpreter {
   constructor(globalEnv, options = {}) {
     this.globalEnv = globalEnv;
     this.moduleResolver = options.moduleResolver;
     this.moduleCache = new Map();  // Cache loaded modules
+    this.moduleResolutionCache = options.moduleResolutionCache || new Map();
     this.moduleExports = {};  // Track exports in current module
+    this.currentModulePath = options.currentModulePath;
     this.abortSignal = options.abortSignal;
     this.executionController = options.executionController;
   }
@@ -162,6 +219,27 @@ export class Interpreter {
     // Only await when there's actually a promise (controller present)
     const checkpointPromise = this._getCheckpointPromise(node, env);
     if (checkpointPromise) await checkpointPromise;
+
+    if (isTypeOnlyDeclaration(node)) {
+      return undefined;
+    }
+
+    if (node.type === 'TSExportAssignment' || node.type === 'TSImportEqualsDeclaration') {
+      throw createUnsupportedTypeScriptRuntimeError(node);
+    }
+
+    if (node.type === 'TSEnumDeclaration') {
+      return this.evaluateTSEnumDeclaration(node, env);
+    }
+
+    if (node.type === 'TSModuleDeclaration') {
+      if (node.declare) return undefined;
+      throw createUnsupportedTypeScriptRuntimeError(node);
+    }
+
+    if (isTypeWrapperExpression(node)) {
+      return await this.evaluateAsync(getTypeWrapperInnerExpression(node), env);
+    }
 
     // Handle await expressions by actually awaiting the promise
     if (node.type === 'AwaitExpression') {
@@ -814,6 +892,27 @@ export class Interpreter {
     // Check for abort signal before evaluating
     this.checkAbortSignal();
 
+    if (isTypeOnlyDeclaration(node)) {
+      return undefined;
+    }
+
+    if (node.type === 'TSExportAssignment' || node.type === 'TSImportEqualsDeclaration') {
+      throw createUnsupportedTypeScriptRuntimeError(node);
+    }
+
+    if (node.type === 'TSEnumDeclaration') {
+      return this.evaluateTSEnumDeclaration(node, env);
+    }
+
+    if (node.type === 'TSModuleDeclaration') {
+      if (node.declare) return undefined;
+      throw createUnsupportedTypeScriptRuntimeError(node);
+    }
+
+    if (isTypeWrapperExpression(node)) {
+      return this.evaluate(getTypeWrapperInnerExpression(node), env);
+    }
+
     switch (node.type) {
       case 'Program':
         return this.evaluateProgram(node, env);
@@ -973,6 +1072,9 @@ export class Interpreter {
 
       case 'Property':
         return this.evaluateProperty(node, env);
+
+      case 'TSEnumDeclaration':
+        return this.evaluateTSEnumDeclaration(node, env);
 
       // JSX Support
       case 'JSXElement':
@@ -1396,7 +1498,9 @@ export class Interpreter {
 
     // Bind parameters
     for (let i = 0; i < metadata.params.length; i++) {
-      const param = metadata.params[i];
+      const param = metadata.params[i].type === 'TSParameterProperty'
+        ? metadata.params[i].parameter
+        : metadata.params[i];
 
       if (param.type === 'Identifier') {
         // Simple parameter: function(x)
@@ -1719,6 +1823,34 @@ export class Interpreter {
     return undefined;
   }
 
+  evaluateTSEnumDeclaration(node, env) {
+    const enumObject = {};
+    let nextNumericValue = 0;
+
+    for (const member of node.members) {
+      const memberName = member.id.name ?? member.id.value;
+      let value;
+
+      if (member.initializer) {
+        value = this.evaluate(member.initializer, env);
+      } else {
+        value = nextNumericValue;
+      }
+
+      enumObject[memberName] = value;
+
+      if (typeof value === 'number') {
+        enumObject[value] = memberName;
+        nextNumericValue = value + 1;
+      } else {
+        nextNumericValue = undefined;
+      }
+    }
+
+    env.define(node.id.name, enumObject, false);
+    return undefined;
+  }
+
   bindObjectPattern(pattern, value, env, isConst = false) {
     if (value === null || value === undefined) {
       throw new TypeError('Cannot destructure undefined or null');
@@ -1823,42 +1955,65 @@ export class Interpreter {
     // Get module path from import source
     const modulePath = node.source.value;
 
+    if (node.importKind === 'type' ||
+        (node.specifiers.length > 0 && node.specifiers.every(specifier => specifier.importKind === 'type'))) {
+      return undefined;
+    }
+
     // Check if module resolver is configured
     if (!this.moduleResolver) {
       throw new Error('Module resolver not configured - cannot import modules');
     }
 
+    const fromPath = this.currentModulePath;
+
+    const resolutionCacheKey = `${fromPath || ''}\0${modulePath}`;
+    let resolution;
+    let resolvedPath = this.moduleResolutionCache.get(resolutionCacheKey);
+    if (!resolvedPath && !modulePath.startsWith('.') && this.moduleCache.has(modulePath)) {
+      resolvedPath = modulePath;
+    }
+
     // Check if module is already cached
     let moduleExports;
-    if (this.moduleCache.has(modulePath)) {
-      moduleExports = this.moduleCache.get(modulePath);
+    if (resolvedPath && this.moduleCache.has(resolvedPath)) {
+      moduleExports = this.moduleCache.get(resolvedPath);
     } else {
-      // Resolve and load module code
-      const resolution = await this.moduleResolver.resolve(modulePath);
+      // Resolve first so relative imports can use importer context and cache by resolved path.
+      resolution = await this.moduleResolver.resolve(modulePath, fromPath);
       if (!resolution) {
         throw new Error(`Cannot find module '${modulePath}'`);
+      }
+
+      resolvedPath = typeof resolution === 'string'
+        ? modulePath
+        : resolution.path || modulePath;
+      this.moduleResolutionCache.set(resolutionCacheKey, resolvedPath);
+      if (this.moduleCache.has(resolvedPath)) {
+        moduleExports = this.moduleCache.get(resolvedPath);
+        return this.bindImportSpecifiers(node, env, modulePath, moduleExports);
       }
 
       // Handle native module exports (for libraries like React)
       // If resolution has 'exports' property, use it directly without parsing
       if (resolution.exports) {
         moduleExports = resolution.exports;
-        this.moduleCache.set(modulePath, moduleExports);
+        this.moduleCache.set(resolvedPath, moduleExports);
       } else {
         // Handle both old (string) and new (ModuleResolution) formats
         const moduleCode = typeof resolution === 'string' ? resolution : resolution.code;
 
         // Parse and execute module in its own environment
-        const moduleAst = acornParse(moduleCode, {
-          ecmaVersion: 2020,
-          sourceType: 'module',
-          locations: false
-        });
+        const moduleAst = parseModuleCode(moduleCode, resolvedPath);
         const moduleEnv = new Environment(this.globalEnv);
 
         // Create a new interpreter for the module with shared module cache
         const moduleInterpreter = new Interpreter(this.globalEnv, {
-          moduleResolver: this.moduleResolver
+          moduleResolver: this.moduleResolver,
+          moduleResolutionCache: this.moduleResolutionCache,
+          currentModulePath: resolvedPath,
+          abortSignal: this.abortSignal,
+          executionController: this.executionController
         });
         moduleInterpreter.moduleCache = this.moduleCache;  // Share cache
 
@@ -1867,12 +2022,21 @@ export class Interpreter {
 
         // Cache the module exports
         moduleExports = moduleInterpreter.moduleExports;
-        this.moduleCache.set(modulePath, moduleExports);
+        this.moduleCache.set(resolvedPath, moduleExports);
       }
     }
 
+    this.bindImportSpecifiers(node, env, modulePath, moduleExports);
+    return undefined;
+  }
+
+  bindImportSpecifiers(node, env, modulePath, moduleExports) {
     // Import specified bindings into current environment
     for (const specifier of node.specifiers) {
+      if (specifier.importKind === 'type') {
+        continue;
+      }
+
       if (specifier.type === 'ImportSpecifier') {
         // Named import: import { foo, bar } from "module"
         const importedName = specifier.imported.name;
@@ -1903,6 +2067,10 @@ export class Interpreter {
   }
 
   evaluateExportNamedDeclaration(node, env) {
+    if (node.exportKind === 'type' || isTypeOnlyDeclaration(node.declaration)) {
+      return undefined;
+    }
+
     // Handle export with declaration: export function foo() {} or export const x = 42
     if (node.declaration) {
       const result = this.evaluate(node.declaration, env);
@@ -1922,6 +2090,9 @@ export class Interpreter {
         // export class Foo {}
         const name = node.declaration.id.name;
         this.moduleExports[name] = env.get(name);
+      } else if (node.declaration.type === 'TSEnumDeclaration') {
+        const name = node.declaration.id.name;
+        this.moduleExports[name] = env.get(name);
       }
 
       return result;
@@ -1930,6 +2101,10 @@ export class Interpreter {
     // Handle export list: export { foo, bar }
     if (node.specifiers && node.specifiers.length > 0) {
       for (const specifier of node.specifiers) {
+        if (specifier.exportKind === 'type') {
+          continue;
+        }
+
         const exportedName = specifier.exported.name;
         const localName = specifier.local.name;
         this.moduleExports[exportedName] = env.get(localName);
@@ -2406,7 +2581,10 @@ export class Interpreter {
 
     // Bind parameters
     for (let i = 0; i < methodFunc.__params.length; i++) {
-      const param = methodFunc.__params[i];
+      const originalParam = methodFunc.__params[i];
+      const param = originalParam.type === 'TSParameterProperty'
+        ? originalParam.parameter
+        : originalParam;
 
       if (param.type === 'Identifier') {
         // Simple parameter: function(x)
@@ -2428,6 +2606,13 @@ export class Interpreter {
       } else {
         // Fallback for simple parameter names
         funcEnv.define(param.name, args[i]);
+      }
+
+      if (originalParam.type === 'TSParameterProperty') {
+        const propertyName = getPatternName(originalParam.parameter);
+        if (propertyName) {
+          thisContext[propertyName] = funcEnv.get(propertyName);
+        }
       }
     }
 

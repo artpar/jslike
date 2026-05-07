@@ -103,7 +103,8 @@ export class WangInterpreter {
     const options = {
       moduleResolver: this.moduleResolver,
       executionController: userOptions.executionController,
-      abortSignal: userOptions.abortSignal  // Pass abort signal to interpreter for cancellation support
+      abortSignal: userOptions.abortSignal,  // Pass abort signal to interpreter for cancellation support
+      sourcePath: userOptions.sourcePath ?? this.options.sourcePath
       // sourceType will be auto-detected from code
     };
 

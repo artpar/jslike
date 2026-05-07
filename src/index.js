@@ -1,5 +1,5 @@
 // Use bundled Acorn parser for zero runtime dependencies
-import { parse as acornParse } from './parser.js';
+import { parse as acornParse, tsParse, tsxParse } from './parser.js';
 import { Interpreter } from './interpreter/interpreter.js';
 import { Environment, ReturnValue } from './runtime/environment.js';
 import { createGlobalEnvironment } from './runtime/builtins.js';
@@ -9,7 +9,7 @@ function containsModuleSyntax(code) {
   // Trigger module mode for:
   // 1. import/export statements
   // 2. Top-level await (await not inside a function)
-  if (/^\s*(import|export)\s+/m.test(code)) {
+  if (/(^|[;{\n])\s*(import|export)\s+/m.test(code)) {
     return true;
   }
 
@@ -23,6 +23,13 @@ function containsModuleSyntax(code) {
   return false;
 }
 
+function isTypeScriptPath(sourcePath) {
+  return typeof sourcePath === 'string' && /\.(ts|tsx|mts|cts)$/i.test(sourcePath);
+}
+
+function isTSXPath(sourcePath) {
+  return typeof sourcePath === 'string' && /\.tsx$/i.test(sourcePath);
+}
 
 export function parse(code, options = {}) {
   // Determine sourceType: use 'module' ONLY if explicitly requested or if code has imports/exports
@@ -32,10 +39,13 @@ export function parse(code, options = {}) {
     sourceType = 'module';
   }
 
+  const shouldParseTypeScript = options.typescript || options.tsx || isTypeScriptPath(options.sourcePath);
+  const parser = options.tsx || isTSXPath(options.sourcePath) ? tsxParse : shouldParseTypeScript ? tsParse : acornParse;
+
   // Parse with Acorn
   try {
-    return acornParse(code, {
-      ecmaVersion: 2022,  // Support ES2022 features (including top-level await)
+    return parser(code, {
+      ecmaVersion: shouldParseTypeScript ? 'latest' : 2022,  // Support ES2022 features (including top-level await)
       sourceType: sourceType,
       locations: true,     // Track source locations for better error messages
       allowReturnOutsideFunction: true,  // Allow top-level return statements
@@ -119,7 +129,8 @@ export async function execute(code, env = null, options = {}) {
     const interpreter = new Interpreter(env, {
       moduleResolver: options.moduleResolver,
       abortSignal: options.abortSignal,
-      executionController: controller
+      executionController: controller,
+      currentModulePath: options.sourcePath
     });
 
     // Use async evaluation if:

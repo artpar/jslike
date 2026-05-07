@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-05-07
+
+### Added
+- TypeScript and TSX parsing for entry code and imported modules via bundled `@sveltejs/acorn-typescript`.
+- Runtime support for TypeScript erasure semantics, including type aliases, interfaces, declarations, annotations, type-only imports/exports, type assertions, `as`, `satisfies`, non-null assertions, and generic call syntax.
+- Runtime support for TypeScript enums and constructor parameter properties.
+- `sourcePath`, `typescript`, and `tsx` execution options for parser selection and import context.
+
+### Fixed
+- Pass importer `fromPath` to `moduleResolver.resolve(modulePath, fromPath)` for static imports.
+- Use resolved module paths as nested import context and cache keys to avoid relative import collisions.
+- Preserve module resolver caching behavior for repeated bare imports.
+
 ## [1.7.0] - 2026-01-22
 
 ### Added

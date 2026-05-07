@@ -473,7 +473,10 @@ Execute JavaScript code and return the result.
 const result = await execute(code, env, {
   moduleResolver,        // For import statements
   executionController,   // For pause/resume/abort
-  abortSignal            // For cancellation
+  abortSignal,           // For cancellation
+  sourcePath,            // Optional importer path for resolving top-level imports
+  typescript,            // Parse TypeScript syntax
+  tsx                    // Parse TypeScript + JSX syntax
 });
 ```
 

@@ -1,6 +1,6 @@
 {
   "name": "jslike",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -92,6 +92,7 @@
     "LICENSE"
   ],
   "devDependencies": {
+    "@sveltejs/acorn-typescript": "^1.0.9",
     "acorn": "^8.15.0",
     "acorn-jsx": "^5.3.2",
     "tsup": "^8.5.1",
