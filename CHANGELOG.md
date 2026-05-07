@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-05-07
+
+### Fixed
+- Initialize JavaScript class instance fields, including arrow function fields that capture `this`.
+- Apply inherited base class field initializers during `super(...)` and implicit subclass construction.
+- Preserve native class-field initialization order across base constructors, derived fields, computed fields, and multi-level inheritance.
+
 ## [1.8.2] - 2026-05-07
 
 ### Fixed
