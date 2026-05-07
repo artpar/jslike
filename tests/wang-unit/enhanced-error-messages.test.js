@@ -138,6 +138,108 @@ describe('Enhanced Error Messages for Member Expressions', () => {
         expect(formatted).toContain('customMethod');
       }
     });
+
+    it('should not mask missing method errors for strict functions', async () => {
+      const strictFn = function strictFn() {
+        'use strict';
+      };
+      interpreter.setVariable('strictFn', strictFn);
+
+      try {
+        await interpreter.execute('strictFn.missingMethod()');
+        expect.fail('Should have thrown an error');
+      } catch (error) {
+        expect(error.message).toContain("calling method 'missingMethod' on object 'strictFn'");
+        expect(error.message).not.toContain('caller');
+        expect(error.message).not.toContain('callee');
+        expect(error.message).not.toContain('arguments');
+
+        const formatted = error.getFormattedMessage();
+        expect(formatted).toContain('Available methods on');
+        expect(formatted).toMatch(/apply|bind|call/);
+      }
+    });
+
+    it('should skip own accessor properties while collecting method suggestions', async () => {
+      const obj = {
+        safeMethod() {
+          return 1;
+        },
+      };
+      Object.defineProperty(obj, 'danger', {
+        get() {
+          throw new Error('own getter should not be invoked');
+        },
+      });
+      interpreter.setVariable('obj', obj);
+
+      try {
+        await interpreter.execute('obj.missingMethod()');
+        expect.fail('Should have thrown an error');
+      } catch (error) {
+        expect(error.message).toContain("calling method 'missingMethod' on object 'obj'");
+        expect(error.message).not.toContain('own getter should not be invoked');
+
+        const formatted = error.getFormattedMessage();
+        expect(formatted).toContain('safeMethod');
+        expect(formatted).not.toContain('danger');
+      }
+    });
+
+    it('should skip prototype accessor properties while collecting method suggestions', async () => {
+      const proto = {
+        safeProtoMethod() {
+          return 1;
+        },
+      };
+      Object.defineProperty(proto, 'dangerProto', {
+        get() {
+          throw new Error('prototype getter should not be invoked');
+        },
+      });
+      const obj = Object.create(proto);
+      interpreter.setVariable('obj', obj);
+
+      try {
+        await interpreter.execute('obj.missingMethod()');
+        expect.fail('Should have thrown an error');
+      } catch (error) {
+        expect(error.message).toContain("calling method 'missingMethod' on object 'obj'");
+        expect(error.message).not.toContain('prototype getter should not be invoked');
+
+        const formatted = error.getFormattedMessage();
+        expect(formatted).toContain('safeProtoMethod');
+        expect(formatted).not.toContain('dangerProto');
+      }
+    });
+
+    it('should keep enhanced errors best-effort when reflection traps throw', async () => {
+      const proxy = new Proxy({}, {
+        get(target, prop) {
+          if (prop === 'missingMethod') return undefined;
+          return target[prop];
+        },
+        getOwnPropertyDescriptor() {
+          throw new Error('descriptor trap should not escape');
+        },
+        getPrototypeOf() {
+          throw new Error('prototype trap should not escape');
+        },
+        ownKeys() {
+          throw new Error('ownKeys trap should not escape');
+        },
+      });
+      interpreter.setVariable('proxy', proxy);
+
+      try {
+        await interpreter.execute('proxy.missingMethod()');
+        expect.fail('Should have thrown an error');
+      } catch (error) {
+        expect(error.message).toContain("calling method 'missingMethod' on object 'proxy'");
+        expect(error.message).not.toContain('trap should not escape');
+        expect(error.availableMethods).toEqual([]);
+      }
+    });
   });
 
   describe('Did You Mean Suggestions', () => {

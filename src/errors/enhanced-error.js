@@ -54,22 +54,48 @@ function getAvailableMethods(obj) {
 
   const methods = new Set();
 
-  // Get own properties
-  Object.getOwnPropertyNames(obj).forEach(name => {
-    if (typeof obj[name] === 'function') {
-      methods.add(name);
+  const addSafeMethods = (target, includeConstructor = true) => {
+    let names;
+    try {
+      names = Object.getOwnPropertyNames(target);
+    } catch {
+      return;
     }
-  });
 
-  // Get prototype methods
-  let proto = Object.getPrototypeOf(obj);
-  while (proto && proto !== Object.prototype) {
-    Object.getOwnPropertyNames(proto).forEach(name => {
-      if (typeof proto[name] === 'function' && name !== 'constructor') {
+    names.forEach(name => {
+      if (!includeConstructor && name === 'constructor') return;
+
+      let descriptor;
+      try {
+        descriptor = Object.getOwnPropertyDescriptor(target, name);
+      } catch {
+        return;
+      }
+
+      if (descriptor && 'value' in descriptor && typeof descriptor.value === 'function') {
         methods.add(name);
       }
     });
-    proto = Object.getPrototypeOf(proto);
+  };
+
+  // Get own properties
+  addSafeMethods(obj);
+
+  // Get prototype methods
+  let proto;
+  try {
+    proto = Object.getPrototypeOf(obj);
+  } catch {
+    proto = null;
+  }
+
+  while (proto && proto !== Object.prototype) {
+    addSafeMethods(proto, false);
+    try {
+      proto = Object.getPrototypeOf(proto);
+    } catch {
+      proto = null;
+    }
   }
 
   return Array.from(methods).sort();
