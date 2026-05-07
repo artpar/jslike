@@ -104,4 +104,42 @@ describe('Module resolver importer paths', () => {
 
     expect(result).toBe('one:two');
   });
+
+  it('does not recursively re-evaluate circular static imports', async () => {
+    const modules = {
+      'a.js': {
+        path: 'a.js',
+        code: 'import { b } from "b.js"; export const a = "a"; export const fromB = b;'
+      },
+      'b.js': {
+        path: 'b.js',
+        code: 'import { a } from "a.js"; export const b = "b"; export const fromA = a;'
+      }
+    };
+    const calls = [];
+    const moduleResolver = {
+      async resolve(modulePath, fromPath) {
+        calls.push({ modulePath, fromPath });
+        if (calls.length > 20) {
+          throw new Error(`resolver loop count=${calls.length} module=${modulePath} from=${fromPath}`);
+        }
+        return modules[modulePath] ?? null;
+      }
+    };
+
+    const result = await execute(
+      'import { a, fromB } from "a.js"; a + ":" + fromB',
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: 'root.js'
+      }
+    );
+
+    expect(result).toBe('a:b');
+    expect(calls).toEqual([
+      { modulePath: 'a.js', fromPath: 'root.js' },
+      { modulePath: 'b.js', fromPath: 'a.js' }
+    ]);
+  });
 });

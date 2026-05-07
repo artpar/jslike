@@ -229,6 +229,78 @@ function collectRuntimeIdentifierReferences(node) {
   return references;
 }
 
+function getExportName(nameNode) {
+  return nameNode?.name ?? nameNode?.value;
+}
+
+function collectDeclarationExportNames(declaration) {
+  const names = [];
+
+  if (!declaration || isTypeOnlyDeclaration(declaration)) {
+    return names;
+  }
+
+  if (declaration.type === 'FunctionDeclaration' ||
+      declaration.type === 'ClassDeclaration' ||
+      declaration.type === 'TSEnumDeclaration') {
+    const name = getPatternName(declaration.id);
+    if (name) names.push(name);
+    return names;
+  }
+
+  if (declaration.type === 'VariableDeclaration') {
+    for (const declarator of declaration.declarations || []) {
+      const name = getPatternName(declarator.id);
+      if (name) names.push(name);
+    }
+  }
+
+  return names;
+}
+
+function collectStaticExportNames(moduleAst) {
+  const names = new Set();
+
+  for (const statement of moduleAst?.body || []) {
+    if (statement.type === 'ExportDefaultDeclaration') {
+      names.add('default');
+      continue;
+    }
+
+    if (statement.type !== 'ExportNamedDeclaration' || statement.exportKind === 'type') {
+      continue;
+    }
+
+    if (statement.declaration) {
+      for (const name of collectDeclarationExportNames(statement.declaration)) {
+        names.add(name);
+      }
+      continue;
+    }
+
+    for (const specifier of statement.specifiers || []) {
+      if (specifier.exportKind === 'type') {
+        continue;
+      }
+
+      const exportedName = getExportName(specifier.exported);
+      if (exportedName) {
+        names.add(exportedName);
+      }
+    }
+  }
+
+  return names;
+}
+
+function predeclareModuleExports(moduleAst, moduleExports) {
+  for (const name of collectStaticExportNames(moduleAst)) {
+    if (!Object.prototype.hasOwnProperty.call(moduleExports, name)) {
+      moduleExports[name] = undefined;
+    }
+  }
+}
+
 export class Interpreter {
   constructor(globalEnv, options = {}) {
     this.globalEnv = globalEnv;
@@ -2255,12 +2327,17 @@ export class Interpreter {
         });
         moduleInterpreter.moduleCache = this.moduleCache;  // Share cache
 
-        // Execute module and collect exports
-        await moduleInterpreter.evaluateAsync(moduleAst, moduleEnv);
-
-        // Cache the module exports
         moduleExports = moduleInterpreter.moduleExports;
+        predeclareModuleExports(moduleAst, moduleExports);
         this.moduleCache.set(resolvedPath, moduleExports);
+
+        try {
+          // Execute module and populate the cached exports object.
+          await moduleInterpreter.evaluateAsync(moduleAst, moduleEnv);
+        } catch (error) {
+          this.moduleCache.delete(resolvedPath);
+          throw error;
+        }
       }
     }
 
