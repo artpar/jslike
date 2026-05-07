@@ -130,6 +130,231 @@ describe('TypeScript module execution', () => {
     ]);
   });
 
+  it('elides regular named imports used only in type positions', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './types') {
+          return {
+            path: '/virtual/types.ts',
+            code: 'export interface IProduct { name: string } export const value = 7;'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import { IProduct, value } from "./types";
+        const x: IProduct = { name: "a" };
+        value
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe(7);
+  });
+
+  it('does not resolve a regular import when every specifier is used only as a type', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        throw new Error(`type-only import should not resolve at runtime: ${modulePath}`);
+      }
+    };
+
+    const result = await execute(
+      `
+        import { IProduct } from "./types";
+        const x: IProduct = { name: "a" };
+        x.name
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe('a');
+  });
+
+  it('still binds regular named imports referenced in function bodies', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './values') {
+          return {
+            path: '/virtual/values.ts',
+            code: 'export const value = 8;'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import { value } from "./values";
+        function read(): number {
+          return value;
+        }
+        read()
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe(8);
+  });
+
+  it('elides default imports used only in type positions', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        throw new Error(`default type-only import should not resolve at runtime: ${modulePath}`);
+      }
+    };
+
+    const result = await execute(
+      `
+        import Product from "./product";
+        const x: Product = { name: "default" };
+        x.name
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe('default');
+  });
+
+  it('elides namespace imports used only in qualified type positions', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        throw new Error(`namespace type-only import should not resolve at runtime: ${modulePath}`);
+      }
+    };
+
+    const result = await execute(
+      `
+        import * as Models from "./models";
+        const x: Models.IProduct = { name: "namespace" };
+        x.name
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe('namespace');
+  });
+
+  it('still binds namespace imports used in value positions', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './models') {
+          return {
+            path: '/virtual/models.ts',
+            code: 'export const value = 9;'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import * as Models from "./models";
+        Models.value
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.ts'
+      }
+    );
+
+    expect(result).toBe(9);
+  });
+
+  it('still binds default imports used as TSX component values', async () => {
+    const env = createEnvironment();
+    env.define('React', {
+      createElement: (type, props, ...children) => ({ type, props, children })
+    });
+
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './component') {
+          return {
+            path: '/virtual/component.tsx',
+            code: 'export default function Button() { return "button"; }'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import Button from "./component";
+        const element = <Button />;
+        element.type()
+      `,
+      env,
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.tsx'
+      }
+    );
+
+    expect(result).toBe('button');
+  });
+
+  it('still binds namespace imports used as TSX member component values', async () => {
+    const env = createEnvironment();
+    env.define('React', {
+      createElement: (type, props, ...children) => ({ type, props, children })
+    });
+
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './ui') {
+          return {
+            path: '/virtual/ui.tsx',
+            code: 'export function Button() { return "member-button"; }'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import * as UI from "./ui";
+        const element = <UI.Button />;
+        element.type()
+      `,
+      env,
+      {
+        moduleResolver,
+        sourcePath: '/virtual/main.tsx'
+      }
+    );
+
+    expect(result).toBe('member-button');
+  });
+
   it('skips type-only export specifiers', async () => {
     const result = await execute(
       `

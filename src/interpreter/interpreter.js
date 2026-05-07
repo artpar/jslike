@@ -57,6 +57,174 @@ function getPatternName(pattern) {
   return pattern.name;
 }
 
+function collectRuntimeIdentifierReferences(node) {
+  const references = new Set();
+  const skipKeys = new Set([
+    'type',
+    'start',
+    'end',
+    'loc',
+    'range',
+    'raw',
+    'typeAnnotation',
+    'returnType',
+    'typeParameters',
+    'typeArguments',
+    'implements'
+  ]);
+
+  const visitPatternDefaults = (pattern) => {
+    if (!pattern || typeof pattern !== 'object') return;
+    if (pattern.type === 'AssignmentPattern') {
+      visit(pattern.right);
+      visitPatternDefaults(pattern.left);
+    } else if (pattern.type === 'ObjectPattern') {
+      for (const property of pattern.properties || []) {
+        visitPatternDefaults(property.value || property.argument);
+      }
+    } else if (pattern.type === 'ArrayPattern') {
+      for (const element of pattern.elements || []) {
+        visitPatternDefaults(element);
+      }
+    } else if (pattern.type === 'RestElement') {
+      visitPatternDefaults(pattern.argument);
+    } else if (pattern.type === 'TSParameterProperty') {
+      visitPatternDefaults(pattern.parameter);
+    }
+  };
+
+  const visitFunction = (fn) => {
+    for (const param of fn.params || []) {
+      visitPatternDefaults(param);
+    }
+    visit(fn.body);
+  };
+
+  const visitJSXName = (jsxName) => {
+    if (!jsxName || typeof jsxName !== 'object') return;
+    if (jsxName.type === 'JSXIdentifier') {
+      if (/^[A-Z]/.test(jsxName.name)) {
+        references.add(jsxName.name);
+      }
+    } else if (jsxName.type === 'JSXMemberExpression') {
+      visitJSXName(jsxName.object);
+    } else if (jsxName.type === 'JSXNamespacedName') {
+      visitJSXName(jsxName.namespace);
+    }
+  };
+
+  const visit = (current, parent = null, parentKey = null) => {
+    if (!current || typeof current !== 'object') return;
+
+    if (Array.isArray(current)) {
+      for (const item of current) visit(item, parent, parentKey);
+      return;
+    }
+
+    if (current.type?.startsWith('TS')) {
+      if (isTypeWrapperExpression(current)) {
+        visit(getTypeWrapperInnerExpression(current), current, 'expression');
+      } else if (current.type === 'TSEnumDeclaration') {
+        for (const member of current.members || []) {
+          visit(member.initializer);
+        }
+      }
+      return;
+    }
+
+    switch (current.type) {
+      case 'Identifier':
+        references.add(current.name);
+        return;
+      case 'ImportDeclaration':
+        return;
+      case 'ExportNamedDeclaration':
+        if (current.declaration) {
+          visit(current.declaration, current, 'declaration');
+        } else if (current.exportKind !== 'type') {
+          for (const specifier of current.specifiers || []) {
+            if (specifier.exportKind !== 'type' && specifier.local?.name) {
+              references.add(specifier.local.name);
+            }
+          }
+        }
+        return;
+      case 'ExportDefaultDeclaration':
+        visit(current.declaration, current, 'declaration');
+        return;
+      case 'VariableDeclarator':
+        visitPatternDefaults(current.id);
+        visit(current.init, current, 'init');
+        return;
+      case 'FunctionDeclaration':
+        visitFunction(current);
+        return;
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        visitFunction(current);
+        return;
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        visit(current.superClass, current, 'superClass');
+        visit(current.body, current, 'body');
+        return;
+      case 'MemberExpression':
+      case 'OptionalMemberExpression':
+        visit(current.object, current, 'object');
+        if (current.computed) {
+          visit(current.property, current, 'property');
+        }
+        return;
+      case 'Property':
+        if (current.computed) {
+          visit(current.key, current, 'key');
+        }
+        visit(current.value, current, 'value');
+        return;
+      case 'MethodDefinition':
+      case 'PropertyDefinition':
+        if (current.computed) {
+          visit(current.key, current, 'key');
+        }
+        if (!current.declare && !current.abstract) {
+          visit(current.value, current, 'value');
+        }
+        return;
+      case 'AssignmentPattern':
+        visit(current.right, current, 'right');
+        return;
+      case 'RestElement':
+        return;
+      case 'ObjectPattern':
+      case 'ArrayPattern':
+        visitPatternDefaults(current);
+        return;
+      case 'JSXElement':
+        visitJSXName(current.openingElement?.name);
+        for (const child of current.children || []) {
+          visit(child);
+        }
+        return;
+      case 'JSXFragment':
+        for (const child of current.children || []) {
+          visit(child);
+        }
+        return;
+      case 'JSXExpressionContainer':
+        visit(current.expression, current, 'expression');
+        return;
+    }
+
+    for (const [key, value] of Object.entries(current)) {
+      if (skipKeys.has(key)) continue;
+      visit(value, current, key);
+    }
+  };
+
+  visit(node);
+  return references;
+}
+
 export class Interpreter {
   constructor(globalEnv, options = {}) {
     this.globalEnv = globalEnv;
@@ -65,6 +233,8 @@ export class Interpreter {
     this.moduleResolutionCache = options.moduleResolutionCache || new Map();
     this.moduleExports = {};  // Track exports in current module
     this.currentModulePath = options.currentModulePath;
+    this.isTypeScriptModule = options.isTypeScriptModule || false;
+    this.runtimeIdentifierReferences = null;
     this.abortSignal = options.abortSignal;
     this.executionController = options.executionController;
   }
@@ -287,15 +457,21 @@ export class Interpreter {
 
     // For Program nodes (evaluate all statements async)
     if (node.type === 'Program') {
+      const previousReferences = this.runtimeIdentifierReferences;
+      this.runtimeIdentifierReferences = collectRuntimeIdentifierReferences(node);
       let result = undefined;
-      for (const statement of node.body) {
-        result = await this.evaluateAsync(statement, env);
-        // Handle top-level return and throw
-        if (result instanceof ReturnValue || result instanceof ThrowSignal) {
-          return result;
+      try {
+        for (const statement of node.body) {
+          result = await this.evaluateAsync(statement, env);
+          // Handle top-level return and throw
+          if (result instanceof ReturnValue || result instanceof ThrowSignal) {
+            return result;
+          }
         }
+        return result;
+      } finally {
+        this.runtimeIdentifierReferences = previousReferences;
       }
-      return result;
     }
 
     // For import declarations (always async)
@@ -1098,27 +1274,33 @@ export class Interpreter {
   }
 
   evaluateProgram(node, env) {
+    const previousReferences = this.runtimeIdentifierReferences;
+    this.runtimeIdentifierReferences = collectRuntimeIdentifierReferences(node);
     let result = undefined;
-    for (let i = 0; i < node.body.length; i++) {
-      const statement = node.body[i];
-      const isLast = i === node.body.length - 1;
+    try {
+      for (let i = 0; i < node.body.length; i++) {
+        const statement = node.body[i];
+        const isLast = i === node.body.length - 1;
 
-      // Special case: Last statement is a BlockStatement that looks like object literal
-      // Handle both shorthand { x, y } and full syntax { key: value, key2: value2 }
-      if (isLast && statement.type === 'BlockStatement') {
-        const objLiteral = this.tryConvertBlockToObjectLiteral(statement, env);
-        if (objLiteral !== null) {
-          return objLiteral;
+        // Special case: Last statement is a BlockStatement that looks like object literal
+        // Handle both shorthand { x, y } and full syntax { key: value, key2: value2 }
+        if (isLast && statement.type === 'BlockStatement') {
+          const objLiteral = this.tryConvertBlockToObjectLiteral(statement, env);
+          if (objLiteral !== null) {
+            return objLiteral;
+          }
         }
-      }
 
-      const statementResult = this.evaluate(statement, env);
-      if (statementResult instanceof ReturnValue || statementResult instanceof ThrowSignal) {
-        return statementResult;
+        const statementResult = this.evaluate(statement, env);
+        if (statementResult instanceof ReturnValue || statementResult instanceof ThrowSignal) {
+          return statementResult;
+        }
+        result = statementResult;
       }
-      result = statementResult;
+      return result;
+    } finally {
+      this.runtimeIdentifierReferences = previousReferences;
     }
-    return result;
   }
 
   // Try to convert a BlockStatement to an object literal
@@ -1960,6 +2142,12 @@ export class Interpreter {
       return undefined;
     }
 
+    if (this.isTypeScriptModule &&
+        node.specifiers.length > 0 &&
+        node.specifiers.every(specifier => !this.isRuntimeImportSpecifier(specifier))) {
+      return undefined;
+    }
+
     // Check if module resolver is configured
     if (!this.moduleResolver) {
       throw new Error('Module resolver not configured - cannot import modules');
@@ -2012,6 +2200,7 @@ export class Interpreter {
           moduleResolver: this.moduleResolver,
           moduleResolutionCache: this.moduleResolutionCache,
           currentModulePath: resolvedPath,
+          isTypeScriptModule: isTypeScriptPath(resolvedPath),
           abortSignal: this.abortSignal,
           executionController: this.executionController
         });
@@ -2033,7 +2222,7 @@ export class Interpreter {
   bindImportSpecifiers(node, env, modulePath, moduleExports) {
     // Import specified bindings into current environment
     for (const specifier of node.specifiers) {
-      if (specifier.importKind === 'type') {
+      if (!this.isRuntimeImportSpecifier(specifier)) {
         continue;
       }
 
@@ -2064,6 +2253,23 @@ export class Interpreter {
     }
 
     return undefined;
+  }
+
+  isRuntimeImportSpecifier(specifier) {
+    if (specifier.importKind === 'type') {
+      return false;
+    }
+
+    if (!this.isTypeScriptModule) {
+      return true;
+    }
+
+    const localName = specifier.local?.name;
+    if (!localName || !this.runtimeIdentifierReferences) {
+      return true;
+    }
+
+    return this.runtimeIdentifierReferences.has(localName);
   }
 
   evaluateExportNamedDeclaration(node, env) {
