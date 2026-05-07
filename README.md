@@ -7,6 +7,7 @@
 - **Production-Ready** - Handles files of any size, tested with 1000+ tests
 - **Full ES6+ JavaScript Support** - Classes, destructuring, template literals, spread operator, arrow functions
 - **Native JSX Support** - Parse and execute JSX without pre-transformation
+- **TypeScript & TSX Module Support** - Execute JS-compatible TypeScript syntax directly from `.ts`, `.tsx`, `.mts`, and `.cts` modules
 - **React Integration** - Import React hooks and components via moduleResolver
 - **CSP-Safe** - Tree-walking interpreter, no eval() or new Function()
 - **ASI (Automatic Semicolon Insertion)** - Write JavaScript naturally without mandatory semicolons
@@ -143,9 +144,10 @@ const moduleResolver = {
 
 ```javascript
 const moduleResolver = {
-  async resolve(modulePath) {
+  async resolve(modulePath, fromPath) {
     if (modulePath === './utils') {
       return {
+        path: '/virtual/project/utils.js',
         code: `
           export function double(x) { return x * 2; }
           export const PI = 3.14159;
@@ -157,6 +159,40 @@ const moduleResolver = {
 };
 ```
 
+`fromPath` is the path of the importing module. For top-level code, pass `sourcePath` to `execute()` so relative imports have a deterministic root. For nested imports, JSLike passes the resolved module `path` returned by the resolver.
+
+```javascript
+const files = {
+  '/virtual/project/main.ts': `
+    import { user } from './user.ts';
+    user.name
+  `,
+  '/virtual/project/user.ts': `
+    type User = { name: string };
+    export const user: User = { name: 'Ada' };
+  `
+};
+
+const moduleResolver = {
+  async resolve(modulePath, fromPath) {
+    const base = new URL('.', `file://${fromPath}`).pathname;
+    const resolvedPath = new URL(modulePath, `file://${base}`).pathname;
+
+    if (!files[resolvedPath]) return null;
+    return {
+      path: resolvedPath,
+      code: files[resolvedPath]
+    };
+  }
+};
+
+const result = await execute(files['/virtual/project/main.ts'], null, {
+  moduleResolver,
+  sourcePath: '/virtual/project/main.ts'
+});
+// "Ada"
+```
+
 ### Import Styles Supported
 
 ```javascript
@@ -164,6 +200,44 @@ import { useState, useEffect } from 'react';     // Named imports
 import React from 'react';                        // Default import
 import * as Utils from './utils';                 // Namespace import
 ```
+
+## TypeScript Support
+
+JSLike parses TypeScript and TSX with a bundled `@sveltejs/acorn-typescript` parser. TypeScript syntax is enabled automatically for `sourcePath` and resolved module paths ending in `.ts`, `.tsx`, `.mts`, or `.cts`. You can also force it with `typescript: true` or `tsx: true`.
+
+```javascript
+const result = await execute(`
+  interface User {
+    name: string;
+  }
+
+  enum Role {
+    Admin,
+    Member
+  }
+
+  class Account {
+    constructor(public user: User, readonly role: Role) {}
+  }
+
+  const account = new Account({ name: 'Ada' }, Role.Admin);
+  account.user.name + ':' + account.role
+`, null, {
+  sourcePath: '/virtual/account.ts'
+});
+// "Ada:0"
+```
+
+Supported TypeScript runtime behavior:
+
+- Type-only declarations and annotations are erased: `type`, `interface`, `declare`, parameter/return annotations, tuple/readonly annotations.
+- Type-only imports and exports do not trigger runtime module resolution.
+- Type wrappers evaluate their inner expression: `as`, `<T>value`, `satisfies`, non-null `!`, generic call instantiation.
+- Enums execute as runtime enum objects, including numeric reverse mappings and string enum members.
+- Constructor parameter properties assign to `this`, including `public`, `private`, and `readonly`.
+- TSX parses and executes JSX in `.tsx` files or with `tsx: true`.
+
+Unsupported runtime TypeScript constructs throw explicit errors instead of executing incorrectly. This currently includes `namespace`, `export =`, and `import x = require(...)`.
 
 ## JSX Features
 
