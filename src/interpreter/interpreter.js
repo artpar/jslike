@@ -57,6 +57,10 @@ function getPatternName(pattern) {
   return pattern.name;
 }
 
+function unwrapTSParameterProperty(param) {
+  return param?.type === 'TSParameterProperty' ? param.parameter : param;
+}
+
 function collectRuntimeIdentifierReferences(node) {
   const references = new Set();
   const skipKeys = new Set([
@@ -1678,34 +1682,7 @@ export class Interpreter {
       funcEnv.define('this', thisContext);
     }
 
-    // Bind parameters
-    for (let i = 0; i < metadata.params.length; i++) {
-      const param = metadata.params[i].type === 'TSParameterProperty'
-        ? metadata.params[i].parameter
-        : metadata.params[i];
-
-      if (param.type === 'Identifier') {
-        // Simple parameter: function(x)
-        funcEnv.define(param.name, args[i]);
-      } else if (param.type === 'AssignmentPattern') {
-        // Default parameter: function(x = defaultValue)
-        const value = args[i] !== undefined ? args[i] : this.evaluate(param.right, funcEnv);
-        funcEnv.define(param.left.name, value);
-      } else if (param.type === 'RestElement') {
-        // Rest parameter: function(...rest)
-        funcEnv.define(param.argument.name, args.slice(i));
-        break; // Rest element must be last
-      } else if (param.type === 'ObjectPattern') {
-        // Destructuring parameter: function({a, b})
-        this.bindObjectPattern(param, args[i], funcEnv);
-      } else if (param.type === 'ArrayPattern') {
-        // Array destructuring parameter: function([a, b])
-        this.bindArrayPattern(param, args[i], funcEnv);
-      } else {
-        // Fallback for simple parameter names
-        funcEnv.define(param.name, args[i]);
-      }
-    }
+    this.bindFunctionParameters(metadata.params, args, funcEnv);
 
     // Execute function body
     // If async, use async evaluation and return a promise
@@ -2062,7 +2039,7 @@ export class Interpreter {
           const finalValue = propValue !== undefined
             ? propValue
             : this.evaluate(prop.value.right, env);
-          env.define(prop.value.left.name, finalValue, isConst);
+          this.bindPattern(prop.value.left, finalValue, env, isConst);
         } else if (prop.value.type === 'ObjectPattern') {
           this.bindObjectPattern(prop.value, propValue, env, isConst);
         } else if (prop.value.type === 'ArrayPattern') {
@@ -2093,13 +2070,85 @@ export class Interpreter {
         const finalValue = value[i] !== undefined
           ? value[i]
           : this.evaluate(element.right, env);
-        env.define(element.left.name, finalValue, isConst);
+        this.bindPattern(element.left, finalValue, env, isConst);
       } else if (element.type === 'ObjectPattern') {
         this.bindObjectPattern(element, value[i], env, isConst);
       } else if (element.type === 'ArrayPattern') {
         this.bindArrayPattern(element, value[i], env, isConst);
       }
     }
+  }
+
+  bindPattern(pattern, value, env, isConst = false) {
+    if (pattern.type === 'Identifier') {
+      env.define(pattern.name, value, isConst);
+    } else if (pattern.type === 'ObjectPattern') {
+      this.bindObjectPattern(pattern, value, env, isConst);
+    } else if (pattern.type === 'ArrayPattern') {
+      this.bindArrayPattern(pattern, value, env, isConst);
+    } else if (pattern.type === 'AssignmentPattern') {
+      const finalValue = value !== undefined ? value : this.evaluate(pattern.right, env);
+      this.bindPattern(pattern.left, finalValue, env, isConst);
+    } else if (pattern.type === 'RestElement') {
+      this.bindPattern(pattern.argument, value, env, isConst);
+    }
+  }
+
+  bindFunctionParameters(params, args, env, thisContext = null) {
+    for (let i = 0; i < params.length; i++) {
+      const originalParam = params[i];
+      const param = unwrapTSParameterProperty(originalParam);
+
+      this.bindFunctionParameter(param, args[i], args.slice(i), env);
+
+      if (originalParam.type === 'TSParameterProperty' && thisContext) {
+        const propertyName = getPatternName(originalParam.parameter);
+        if (propertyName) {
+          thisContext[propertyName] = env.get(propertyName);
+        }
+      }
+
+      if (param.type === 'RestElement') {
+        break;
+      }
+    }
+  }
+
+  bindFunctionParameter(param, arg, restArgs, env) {
+    if (param.type === 'Identifier') {
+      this.bindPattern(param, arg, env);
+      return;
+    }
+
+    if (param.type === 'AssignmentPattern') {
+      const value = arg !== undefined ? arg : this.evaluate(param.right, env);
+      this.bindPattern(param.left, value, env);
+      return;
+    }
+
+    if (param.type === 'RestElement') {
+      const target = param.argument;
+      if (target.type === 'Identifier') {
+        env.define(target.name, restArgs);
+      } else if (target.type === 'ArrayPattern') {
+        this.bindArrayPattern(target, restArgs, env);
+      } else if (target.type === 'ObjectPattern') {
+        this.bindObjectPattern(target, restArgs, env);
+      }
+      return;
+    }
+
+    if (param.type === 'ObjectPattern') {
+      this.bindPattern(param, arg, env);
+      return;
+    }
+
+    if (param.type === 'ArrayPattern') {
+      this.bindPattern(param, arg, env);
+      return;
+    }
+
+    env.define(param.name, arg);
   }
 
   evaluateFunctionDeclaration(node, env) {
@@ -2840,42 +2889,7 @@ export class Interpreter {
       funcEnv.define('super', superFunc);
     }
 
-    // Bind parameters
-    for (let i = 0; i < methodFunc.__params.length; i++) {
-      const originalParam = methodFunc.__params[i];
-      const param = originalParam.type === 'TSParameterProperty'
-        ? originalParam.parameter
-        : originalParam;
-
-      if (param.type === 'Identifier') {
-        // Simple parameter: function(x)
-        funcEnv.define(param.name, args[i]);
-      } else if (param.type === 'AssignmentPattern') {
-        // Default parameter: function(x = defaultValue)
-        const value = args[i] !== undefined ? args[i] : this.evaluate(param.right, funcEnv);
-        funcEnv.define(param.left.name, value);
-      } else if (param.type === 'RestElement') {
-        // Rest parameter: function(...rest)
-        funcEnv.define(param.argument.name, args.slice(i));
-        break; // Rest element must be last
-      } else if (param.type === 'ObjectPattern') {
-        // Destructuring parameter: function({a, b})
-        this.bindObjectPattern(param, args[i], funcEnv);
-      } else if (param.type === 'ArrayPattern') {
-        // Array destructuring parameter: function([a, b])
-        this.bindArrayPattern(param, args[i], funcEnv);
-      } else {
-        // Fallback for simple parameter names
-        funcEnv.define(param.name, args[i]);
-      }
-
-      if (originalParam.type === 'TSParameterProperty') {
-        const propertyName = getPatternName(originalParam.parameter);
-        if (propertyName) {
-          thisContext[propertyName] = funcEnv.get(propertyName);
-        }
-      }
-    }
+    this.bindFunctionParameters(methodFunc.__params, args, funcEnv, thisContext);
 
     const result = this.evaluate(methodFunc.__body, funcEnv);
 
