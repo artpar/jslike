@@ -39,6 +39,121 @@ export class Interpreter {
     }
   }
 
+  async evaluateAsyncRawValue(node, env) {
+    if (!node) return { value: undefined };
+
+    if (node.type === 'CallExpression') {
+      return await this.evaluateCallExpressionAsyncRawValue(node, env);
+    }
+
+    if (node.type === 'MemberExpression') {
+      const obj = (await this.evaluateAsyncRawValue(node.object, env)).value;
+
+      if (node.optional && (obj === null || obj === undefined)) {
+        return { value: undefined };
+      }
+
+      if (obj === null || obj === undefined) {
+        throw new TypeError(`Cannot read property of ${obj}`);
+      }
+
+      const prop = node.computed
+        ? await this.evaluateAsync(node.property, env)
+        : node.property.name;
+
+      return { value: obj[prop] };
+    }
+
+    if (node.type === 'ChainExpression') {
+      return await this.evaluateAsyncRawValue(node.expression, env);
+    }
+
+    if (node.type === 'ConditionalExpression') {
+      const test = await this.evaluateAsync(node.test, env);
+      return await this.evaluateAsyncRawValue(test ? node.consequent : node.alternate, env);
+    }
+
+    if (node.type === 'LogicalExpression') {
+      const left = await this.evaluateAsync(node.left, env);
+      if (node.operator === '&&') {
+        return left ? await this.evaluateAsyncRawValue(node.right, env) : { value: left };
+      }
+      if (node.operator === '||') {
+        return left ? { value: left } : await this.evaluateAsyncRawValue(node.right, env);
+      }
+      if (node.operator === '??') {
+        return left !== null && left !== undefined
+          ? { value: left }
+          : await this.evaluateAsyncRawValue(node.right, env);
+      }
+    }
+
+    if (node.type === 'SequenceExpression') {
+      for (let i = 0; i < node.expressions.length - 1; i++) {
+        await this.evaluateAsync(node.expressions[i], env);
+      }
+      return await this.evaluateAsyncRawValue(node.expressions[node.expressions.length - 1], env);
+    }
+
+    if (node.type === 'NewExpression') {
+      return { value: this.evaluateNewExpression(node, env) };
+    }
+
+    if (['Literal', 'Identifier', 'ThisExpression', 'Super'].includes(node.type)) {
+      return { value: this.evaluate(node, env) };
+    }
+
+    return { value: await this.evaluateAsync(node, env) };
+  }
+
+  async evaluateCallExpressionAsyncRawValue(node, env) {
+    let thisContext = undefined;
+    let callee;
+    let objectName = null;
+    let methodName = null;
+
+    if (node.callee.type === 'MemberExpression') {
+      thisContext = (await this.evaluateAsyncRawValue(node.callee.object, env)).value;
+      if (node.callee.optional && (thisContext === null || thisContext === undefined)) {
+        return { value: undefined };
+      }
+      const prop = node.callee.computed
+        ? await this.evaluateAsync(node.callee.property, env)
+        : node.callee.property.name;
+      callee = thisContext[prop];
+
+      methodName = prop;
+      objectName = this.getExpressionName(node.callee.object);
+    } else {
+      callee = await this.evaluateAsync(node.callee, env);
+    }
+
+    if (node.optional && (callee === null || callee === undefined)) {
+      return { value: undefined };
+    }
+
+    const rawArgs = [];
+    for (const arg of node.arguments) {
+      rawArgs.push(await this.evaluateAsync(arg, env));
+    }
+    const args = this.flattenSpreadArgs(rawArgs);
+
+    if (typeof callee === 'function') {
+      const value = thisContext !== undefined
+        ? callee.call(thisContext, ...args)
+        : callee(...args);
+      return { value };
+    } else if (callee && callee.__isFunction) {
+      return { value: this.callUserFunction(callee, args, env, thisContext) };
+    }
+
+    if (objectName && methodName) {
+      throw createMethodNotFoundError(objectName, methodName, thisContext);
+    }
+
+    throw new TypeError(`${node.callee.name || 'Expression'} is not a function`);
+  }
+
   // Async evaluation for async functions - handles await expressions
   async evaluateAsync(node, env) {
     if (!node) return undefined;
@@ -77,7 +192,7 @@ export class Interpreter {
     if (node.type === 'VariableDeclaration') {
       for (const declarator of node.declarations) {
         const value = declarator.init
-          ? await this.evaluateAsync(declarator.init, env)
+          ? (await this.evaluateAsyncRawValue(declarator.init, env)).value
           : undefined;
 
         const isConst = node.kind === 'const';
@@ -134,54 +249,8 @@ export class Interpreter {
 
     // For call expressions (might be calling async functions)
     if (node.type === 'CallExpression') {
-      let thisContext = undefined;
-      let callee;
-      let objectName = null;
-      let methodName = null;
-
-      if (node.callee.type === 'MemberExpression') {
-        thisContext = await this.evaluateAsync(node.callee.object, env);
-        if (node.callee.optional && (thisContext === null || thisContext === undefined)) {
-          return undefined;
-        }
-        const prop = node.callee.computed
-          ? await this.evaluateAsync(node.callee.property, env)
-          : node.callee.property.name;
-        callee = thisContext[prop];
-
-        // Capture names for enhanced error messages
-        methodName = prop;
-        objectName = this.getExpressionName(node.callee.object);
-      } else {
-        callee = await this.evaluateAsync(node.callee, env);
-      }
-
-      // Handle optional call - if optional and callee is null/undefined, return undefined
-      if (node.optional && (callee === null || callee === undefined)) {
-        return undefined;
-      }
-
-      const rawArgs = [];
-      for (const arg of node.arguments) {
-        rawArgs.push(await this.evaluateAsync(arg, env));
-      }
-      const args = this.flattenSpreadArgs(rawArgs);
-
-      if (typeof callee === 'function') {
-        if (thisContext !== undefined) {
-          return await callee.call(thisContext, ...args);
-        }
-        return await callee(...args);
-      } else if (callee && callee.__isFunction) {
-        return await this.callUserFunction(callee, args, env, thisContext);
-      }
-
-      // Throw enhanced error for member expression calls
-      if (objectName && methodName) {
-        throw createMethodNotFoundError(objectName, methodName, thisContext);
-      }
-
-      throw new TypeError(`${node.callee.name || 'Expression'} is not a function`);
+      const result = (await this.evaluateCallExpressionAsyncRawValue(node, env)).value;
+      return await result;
     }
 
     // For chain expressions (optional chaining)
@@ -191,7 +260,7 @@ export class Interpreter {
 
     // For member expressions in async context
     if (node.type === 'MemberExpression') {
-      const obj = await this.evaluateAsync(node.object, env);
+      const obj = (await this.evaluateAsyncRawValue(node.object, env)).value;
 
       // Handle optional chaining
       if (node.optional && (obj === null || obj === undefined)) {
@@ -513,7 +582,7 @@ export class Interpreter {
 
     // For AssignmentExpression with async value
     if (node.type === 'AssignmentExpression') {
-      const value = await this.evaluateAsync(node.right, env);
+      const value = (await this.evaluateAsyncRawValue(node.right, env)).value;
 
       if (node.left.type === 'Identifier') {
         const name = node.left.name;
