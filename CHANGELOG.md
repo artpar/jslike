@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.9] - 2026-05-08
+
+### Fixed
+- Preserve rejected async function promises when they are passed to userland assertion chains before a handler is attached.
+- Avoid implicit awaits for promise-producing calls in async call arguments, assignments, array elements, object values, and expression-statement completions.
+
 ## [1.8.8] - 2026-05-08
 
 ### Fixed

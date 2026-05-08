@@ -1,6 +1,6 @@
 {
   "name": "jslike",
-  "version": "1.8.8",
+  "version": "1.8.9",
   "description": "Production-ready JavaScript interpreter with full ES6+ support using Acorn parser",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
