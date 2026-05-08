@@ -2454,7 +2454,7 @@ export class Interpreter {
           throw new Error(`Module '${modulePath}' has no export '${importedName}'`);
         }
 
-        env.define(localName, moduleExports[importedName]);
+        env.defineLive(localName, () => moduleExports[importedName]);
       } else if (specifier.type === 'ImportDefaultSpecifier') {
         // Default import: import foo from "module"
         const localName = specifier.local.name;
@@ -2463,7 +2463,7 @@ export class Interpreter {
           throw new Error(`Module '${modulePath}' has no default export`);
         }
 
-        env.define(localName, moduleExports.default);
+        env.defineLive(localName, () => moduleExports.default);
       } else if (specifier.type === 'ImportNamespaceSpecifier') {
         // Namespace import: import * as foo from "module"
         const localName = specifier.local.name;

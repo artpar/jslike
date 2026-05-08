@@ -142,4 +142,185 @@ describe('Module resolver importer paths', () => {
       { modulePath: 'b.js', fromPath: 'a.js' }
     ]);
   });
+
+  it('keeps named class imports live across circular module evaluation', async () => {
+    const modules = {
+      'a.js': {
+        path: 'a.js',
+        code: 'import { B } from "b.js"; export class A { makeB() { return new B(); } }'
+      },
+      'b.js': {
+        path: 'b.js',
+        code: 'import { A } from "a.js"; export class B { typeOfA() { return typeof A; } makeA() { return new A(); } }'
+      }
+    };
+    const calls = [];
+    const moduleResolver = {
+      async resolve(modulePath, fromPath) {
+        calls.push({ modulePath, fromPath });
+        if (calls.length > 20) {
+          throw new Error(`resolver loop count=${calls.length} module=${modulePath} from=${fromPath}`);
+        }
+        return modules[modulePath] ?? null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import { A } from "a.js";
+        import { B } from "b.js";
+        const b = new A().makeB();
+        const a = new B().makeA();
+        ({ entryA: typeof A, entryB: typeof B, bTypeOfA: b.typeOfA(), aName: a.constructor.name })
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: 'root.js'
+      }
+    );
+
+    expect(result).toEqual({
+      entryA: 'function',
+      entryB: 'function',
+      bTypeOfA: 'function',
+      aName: 'classConstructor'
+    });
+    expect(calls).toEqual([
+      { modulePath: 'a.js', fromPath: 'root.js' },
+      { modulePath: 'b.js', fromPath: 'a.js' }
+    ]);
+  });
+
+  it('keeps default imports live across circular module evaluation', async () => {
+    const modules = {
+      'a.js': {
+        path: 'a.js',
+        code: 'import { typeOfA } from "b.js"; export default class A {} export const seen = typeOfA();'
+      },
+      'b.js': {
+        path: 'b.js',
+        code: 'import A from "a.js"; export function typeOfA() { return typeof A; } export function makeA() { return new A(); }'
+      }
+    };
+    const moduleResolver = {
+      async resolve(modulePath) {
+        return modules[modulePath] ?? null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import A, { seen } from "a.js";
+        import { typeOfA, makeA } from "b.js";
+        const a = makeA();
+        ({ entryA: typeof A, bTypeOfA: typeOfA(), duringA: seen, aName: a.constructor.name })
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: 'root.js'
+      }
+    );
+
+    expect(result).toEqual({
+      entryA: 'function',
+      bTypeOfA: 'function',
+      duringA: 'function',
+      aName: 'classConstructor'
+    });
+  });
+
+  it('keeps TypeScript page-object class imports constructable across cycles', async () => {
+    const modules = {
+      '@playwright/test': {
+        code: '',
+        exports: { Page: function Page() {}, Locator: function Locator() {} }
+      },
+      '@pages/main-page': {
+        path: 'page-objects/main-page.ts',
+        code: `
+          import { Locator, Page } from '@playwright/test';
+          import { DisappearingElementsPage } from '@pages/disappearing-elements/disappearing-elements-page';
+          import { GeolocationPage } from './geolocation-page';
+
+          export class MainPage {
+            readonly page: Page;
+            readonly disappearingElementsLink: Locator;
+            readonly geolocationLink: Locator;
+
+            constructor(page: Page) {
+              this.page = page;
+              this.disappearingElementsLink = page.getByRole('link', { name: 'Disappearing Elements' });
+              this.geolocationLink = page.getByRole('link', { name: 'Geolocation' });
+            }
+
+            async dissappearringElements() {
+              await this.disappearingElementsLink.click();
+              return new DisappearingElementsPage(this.page);
+            }
+
+            async geolocation() {
+              await this.geolocationLink.click();
+              return new GeolocationPage(this.page);
+            }
+          }`
+      },
+      '@pages/disappearing-elements/disappearing-elements-page': {
+        path: 'page-objects/disappearing-elements/disappearing-elements-page.ts',
+        code: `
+          import { MainPage } from '@pages/main-page';
+          import { Locator, Page } from '@playwright/test';
+
+          export class DisappearingElementsPage {
+            readonly page: Page;
+            readonly homeButton: Locator;
+
+            constructor(page: Page) {
+              this.page = page;
+              this.homeButton = page.getByRole('link', { name: 'Home' });
+            }
+
+            async home() {
+              await this.homeButton.click();
+              return new MainPage(this.page);
+            }
+          }`
+      },
+      './geolocation-page': {
+        path: 'page-objects/geolocation-page.ts',
+        code: 'export class GeolocationPage { constructor(page) { this.page = page; } }'
+      }
+    };
+    const moduleResolver = {
+      async resolve(modulePath) {
+        return modules[modulePath] ?? null;
+      }
+    };
+
+    const result = await execute(
+      `
+        import { MainPage } from '@pages/main-page';
+        import { DisappearingElementsPage } from '@pages/disappearing-elements/disappearing-elements-page';
+
+        const locator = { click: async () => undefined };
+        const page = { getByRole() { return locator; } };
+        const main = new MainPage(page);
+        const disappearing = await main.dissappearringElements();
+        const home = await disappearing.home();
+        ({ mainType: typeof MainPage, disappearingName: disappearing.constructor.name, homeName: home.constructor.name })
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: 'wrapper.js'
+      }
+    );
+
+    expect(result).toEqual({
+      mainType: 'function',
+      disappearingName: 'classConstructor',
+      homeName: 'classConstructor'
+    });
+  });
 });
