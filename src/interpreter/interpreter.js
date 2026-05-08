@@ -2,6 +2,20 @@ import { Environment, ReturnValue, BreakSignal, ContinueSignal, ThrowSignal } fr
 import { parse as acornParse, tsParse, tsxParse } from '../parser.js';
 import { createMethodNotFoundError } from '../errors/enhanced-error.js';
 
+const ASYNC_EXPRESSION_COMPLETION = Symbol('jslike.asyncExpressionCompletion');
+
+function createAsyncExpressionCompletion(value) {
+  return { [ASYNC_EXPRESSION_COMPLETION]: true, value };
+}
+
+function isAsyncExpressionCompletion(value) {
+  return value && value[ASYNC_EXPRESSION_COMPLETION] === true;
+}
+
+function unwrapAsyncExpressionCompletion(value) {
+  return isAsyncExpressionCompletion(value) ? value.value : value;
+}
+
 function isTypeScriptPath(sourcePath) {
   return typeof sourcePath === 'string' && /\.(ts|tsx|mts|cts)$/i.test(sourcePath);
 }
@@ -398,6 +412,45 @@ export class Interpreter {
       return await this.evaluateAsyncRawValue(node.expressions[node.expressions.length - 1], env);
     }
 
+    if (node.type === 'AssignmentExpression') {
+      const value = (await this.evaluateAsyncRawValue(node.right, env)).value;
+
+      if (node.left.type === 'Identifier') {
+        const name = node.left.name;
+        if (node.operator === '=') {
+          if (env.has(name)) {
+            env.set(name, value);
+          } else {
+            env.define(name, value);
+          }
+          return { value };
+        }
+
+        const current = env.get(name);
+        const newValue = this.applyCompoundAssignment(node.operator, current, value);
+        env.set(name, newValue);
+        return { value: newValue };
+      }
+
+      if (node.left.type === 'MemberExpression') {
+        const obj = await this.evaluateAsync(node.left.object, env);
+        const prop = node.left.computed
+          ? await this.evaluateAsync(node.left.property, env)
+          : node.left.property.name;
+
+        if (node.operator === '=') {
+          obj[prop] = value;
+          return { value };
+        }
+
+        const newValue = this.applyCompoundAssignment(node.operator, obj[prop], value);
+        obj[prop] = newValue;
+        return { value: newValue };
+      }
+
+      throw new Error('Invalid assignment target');
+    }
+
     if (node.type === 'NewExpression') {
       return { value: this.evaluateNewExpression(node, env) };
     }
@@ -437,7 +490,7 @@ export class Interpreter {
 
     const rawArgs = [];
     for (const arg of node.arguments) {
-      rawArgs.push(await this.evaluateAsync(arg, env));
+      rawArgs.push((await this.evaluateAsyncRawValue(arg, env)).value);
     }
     const args = this.flattenSpreadArgs(rawArgs);
 
@@ -513,7 +566,7 @@ export class Interpreter {
 
     // For expression statements, evaluate the expression async
     if (node.type === 'ExpressionStatement') {
-      return await this.evaluateAsync(node.expression, env);
+      return createAsyncExpressionCompletion((await this.evaluateAsyncRawValue(node.expression, env)).value);
     }
 
     // For variable declarations with await in init
@@ -548,7 +601,7 @@ export class Interpreter {
             return result;
           }
         }
-        return result;
+        return unwrapAsyncExpressionCompletion(result);
       } finally {
         this.runtimeIdentifierReferences = previousReferences;
       }
@@ -1026,7 +1079,7 @@ export class Interpreter {
             throw new TypeError('Spread syntax requires an iterable');
           }
         } else {
-          result.push(await this.evaluateAsync(elem, env));
+          result.push((await this.evaluateAsyncRawValue(elem, env)).value);
         }
       }
       return result;
@@ -1045,7 +1098,7 @@ export class Interpreter {
           const key = prop.key.type === 'Identifier' && !prop.computed
             ? prop.key.name
             : await this.evaluateAsync(prop.key, env);
-          const value = prop.value ? await this.evaluateAsync(prop.value, env) : env.get(key);
+          const value = prop.value ? (await this.evaluateAsyncRawValue(prop.value, env)).value : env.get(key);
           if (prop.method && prop.value.type === 'FunctionExpression') {
             obj[key] = (...args) => {
               const funcValue = this.evaluate(prop.value, env);

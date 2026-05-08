@@ -184,4 +184,79 @@ describe('Promise Method Chaining', () => {
 
     expect(result).toEqual([2, 3]);
   });
+
+  it('should let userland rejects.toThrow handlers observe async function rejections', async () => {
+    const interpreter = createInterpreter();
+
+    const result = await interpreter.execute(`
+      function expect(actual) {
+        const promiseActual = Promise.resolve(actual);
+        return {
+          rejects: {
+            toThrow: async () => {
+              try {
+                await promiseActual;
+              } catch (e) {
+                return "caught:" + e.message;
+              }
+              throw new Error("expected reject");
+            }
+          }
+        };
+      }
+      async function f() { throw new Error("boom"); }
+      return await expect(f()).rejects.toThrow();
+    `);
+
+    expect(result).toBe('caught:boom');
+  });
+
+  it('should preserve rejected async function promises passed to native promise helpers', async () => {
+    const interpreter = createInterpreter();
+
+    const result = await interpreter.execute(`
+      async function f() { throw new Error("boom"); }
+      const promise = Promise.resolve(f());
+      return await promise.catch(e => "caught:" + e.message);
+    `);
+
+    expect(result).toBe('caught:boom');
+  });
+
+  it('should preserve rejected async function promises assigned before catch handlers', async () => {
+    const interpreter = createInterpreter();
+
+    const result = await interpreter.execute(`
+      async function f() { throw new Error("boom"); }
+      let promise;
+      promise = f();
+      return await promise.catch(e => "caught:" + e.message);
+    `);
+
+    expect(result).toBe('caught:boom');
+  });
+
+  it('should preserve rejected async function promises in arrays before catch handlers', async () => {
+    const interpreter = createInterpreter();
+
+    const result = await interpreter.execute(`
+      async function f() { throw new Error("boom"); }
+      const promises = [f()];
+      return await promises[0].catch(e => "caught:" + e.message);
+    `);
+
+    expect(result).toBe('caught:boom');
+  });
+
+  it('should preserve rejected async function promises in object properties before catch handlers', async () => {
+    const interpreter = createInterpreter();
+
+    const result = await interpreter.execute(`
+      async function f() { throw new Error("boom"); }
+      const state = { promise: f() };
+      return await state.promise.catch(e => "caught:" + e.message);
+    `);
+
+    expect(result).toBe('caught:boom');
+  });
 });
