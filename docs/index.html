@@ -362,6 +362,7 @@
             </select>
             <select id="syntaxMode" class="mode-select" title="Syntax mode">
                 <option value="javascript">JavaScript</option>
+                <option value="jsx">JSX</option>
                 <option value="typescript">TypeScript</option>
                 <option value="tsx">TSX</option>
             </select>
@@ -989,6 +990,7 @@ element;`
         };
 
         const exampleModes = {
+            jsx: 'jsx',
             typescript: 'typescript',
             tsx: 'tsx'
         };
@@ -1010,11 +1012,7 @@ export function average(values) {
 
         function getSyntaxOptions() {
             const mode = document.getElementById('syntaxMode').value;
-            const sourcePath = mode === 'tsx'
-                ? '/playground/main.tsx'
-                : mode === 'typescript'
-                    ? '/playground/main.ts'
-                    : '/playground/main.js';
+            const sourcePath = getSourcePathForMode(mode);
 
             return {
                 sourcePath,
@@ -1042,6 +1040,42 @@ export function average(values) {
             };
         }
 
+        function getSourcePathForMode(mode) {
+            if (mode === 'jsx') {
+                return '/playground/main.jsx';
+            }
+
+            if (mode === 'typescript') {
+                return '/playground/main.ts';
+            }
+
+            if (mode === 'tsx') {
+                return '/playground/main.tsx';
+            }
+
+            return '/playground/main.js';
+        }
+
+        function getEditorLanguageForMode(mode) {
+            return mode === 'typescript' || mode === 'tsx' ? 'typescript' : 'javascript';
+        }
+
+        function createEditorModel(value, mode) {
+            const sourcePath = getSourcePathForMode(mode);
+            const existing = monaco.editor.getModel(monaco.Uri.parse('file://' + sourcePath));
+
+            if (existing) {
+                existing.setValue(value);
+                return existing;
+            }
+
+            return monaco.editor.createModel(
+                value,
+                getEditorLanguageForMode(mode),
+                monaco.Uri.parse('file://' + sourcePath)
+            );
+        }
+
         // Initialize Monaco Editor
         require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
 
@@ -1056,9 +1090,23 @@ export function average(values) {
                 }
             });
 
+            const compilerOptions = {
+                allowJs: true,
+                allowNonTsExtensions: true,
+                jsx: monaco.languages.typescript.JsxEmit.React,
+                target: monaco.languages.typescript.ScriptTarget.ES2020
+            };
+            const diagnosticsOptions = {
+                noSemanticValidation: true,
+                noSuggestionDiagnostics: true
+            };
+            monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
+            monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticsOptions);
+            monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticsOptions);
+
             editor = monaco.editor.create(document.getElementById('editor'), {
-                value: examples.hello,
-                language: 'javascript',
+                model: createEditorModel(examples.hello, 'javascript'),
                 theme: 'jslike-dark',
                 fontSize: 14,
                 minimap: { enabled: false },
@@ -1107,9 +1155,13 @@ export function average(values) {
             if (!editor || !window.monaco) return;
 
             const mode = document.getElementById('syntaxMode').value;
-            const model = editor.getModel();
-            const language = mode === 'javascript' ? 'javascript' : 'typescript';
-            monaco.editor.setModelLanguage(model, language);
+            const currentModel = editor.getModel();
+            const currentValue = currentModel ? currentModel.getValue() : '';
+            const nextModel = createEditorModel(currentValue, mode);
+
+            if (currentModel !== nextModel) {
+                editor.setModel(nextModel);
+            }
         }
 
         // Divider resize
