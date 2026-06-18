@@ -360,6 +360,10 @@ export class Interpreter {
   async evaluateAsyncRawValue(node, env) {
     if (!node) return { value: undefined };
 
+    if (node.type === 'ImportExpression') {
+      return { value: this.evaluateImportExpression(node, env) };
+    }
+
     if (node.type === 'CallExpression') {
       return await this.evaluateCallExpressionAsyncRawValue(node, env);
     }
@@ -549,6 +553,10 @@ export class Interpreter {
     if (node.type === 'AwaitExpression') {
       const promise = await this.evaluateAsync(node.argument, env);
       return await promise;
+    }
+
+    if (node.type === 'ImportExpression') {
+      return await this.evaluateImportExpression(node, env);
     }
 
     // For block statements, evaluate each statement async
@@ -1264,6 +1272,9 @@ export class Interpreter {
 
       case 'CallExpression':
         return this.evaluateCallExpression(node, env);
+
+      case 'ImportExpression':
+        return this.evaluateImportExpression(node, env);
 
       case 'MemberExpression':
         return this.evaluateMemberExpression(node, env);
@@ -2359,6 +2370,15 @@ export class Interpreter {
 
     this.bindImportSpecifiers(node, env, modulePath, moduleExports);
     return undefined;
+  }
+
+  async evaluateImportExpression(node, env) {
+    const modulePath = (await this.evaluateAsyncRawValue(node.source, env)).value;
+    if (typeof modulePath !== 'string') {
+      throw new TypeError('Dynamic import specifier must evaluate to a string');
+    }
+
+    return await this.loadModuleExports(modulePath);
   }
 
   async loadModuleExports(modulePath) {

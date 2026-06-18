@@ -29,6 +29,66 @@ describe('Module resolver importer paths', () => {
     ]);
   });
 
+  it('resolves top-level dynamic imports through the module resolver', async () => {
+    const calls = [];
+    const moduleResolver = {
+      async resolve(modulePath, fromPath) {
+        calls.push({ modulePath, fromPath });
+        if (modulePath === './dep.js') {
+          return {
+            path: '/virtual/project/dep.js',
+            code: 'export const value = 42;'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      'const m = await import("./dep.js"); m.value',
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/project/main.js'
+      }
+    );
+
+    expect(result).toBe(42);
+    expect(calls).toEqual([
+      { modulePath: './dep.js', fromPath: '/virtual/project/main.js' }
+    ]);
+  });
+
+  it('keeps dynamic import as a promise before await', async () => {
+    const moduleResolver = {
+      async resolve(modulePath) {
+        if (modulePath === './dep.js') {
+          return {
+            path: '/virtual/project/dep.js',
+            code: 'export const value = 42;'
+          };
+        }
+        return null;
+      }
+    };
+
+    const result = await execute(
+      `
+        const p = import("./dep.js");
+        const hasThen = typeof p.then === "function";
+        const m = await p;
+        ({ hasThen, value: m.value })
+      `,
+      createEnvironment(),
+      {
+        moduleResolver,
+        sourcePath: '/virtual/project/main.js'
+      }
+    );
+
+    expect(result).toEqual({ hasThen: true, value: 42 });
+  });
+
   it('uses resolved module path as fromPath for nested static imports', async () => {
     const calls = [];
     const modules = {
