@@ -641,7 +641,6 @@ src/
 ## Known Limitations
 
 - Generator functions (`function*`, `yield`) not supported
-- Tagged template literals not fully supported
 - Class getters/setters not fully supported
 - Proxies and Reflect API not implemented
 
